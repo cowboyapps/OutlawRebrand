@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 
@@ -244,16 +243,13 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
   const updatePanelUrl = useUpdatePanelUrl();
 
   const [name, setName] = useState("");
-  const [selectedUrl, setSelectedUrl] = useState("");
+  const [oldUrl, setOldUrl] = useState("");
   const [newUrl, setNewUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (apkInfo) {
       setName(apkInfo.appName || "");
-      if (apkInfo.urls?.length > 0) {
-        setSelectedUrl(apkInfo.urls[0]);
-      }
     }
   }, [apkInfo]);
 
@@ -266,8 +262,8 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
         await updateAppName.mutateAsync({ sessionId, data: { newName: name } });
       }
       
-      if (selectedUrl && newUrl && selectedUrl !== newUrl) {
-        await updatePanelUrl.mutateAsync({ sessionId, data: { oldUrl: selectedUrl, newUrl } });
+      if (oldUrl && newUrl && oldUrl !== newUrl) {
+        await updatePanelUrl.mutateAsync({ sessionId, data: { oldUrl, newUrl } });
       }
       
       toast({ title: "Configuration saved", description: "App details updated successfully." });
@@ -315,31 +311,24 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
 
         <div className="space-y-4 pt-4 border-t border-border">
           <h3 className="text-lg font-medium">Panel URL Replacement</h3>
-          <p className="text-sm text-muted-foreground">Select an existing URL found in the app and replace it with your panel URL.</p>
+          <p className="text-sm text-muted-foreground">Enter the existing panel URL to search for in the app, then enter the new URL to replace it with.</p>
           
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label>Original URL</Label>
-              <Select value={selectedUrl} onValueChange={setSelectedUrl}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select URL to replace" />
-                </SelectTrigger>
-                <SelectContent>
-                  {apkInfo.urls?.map((url: string) => (
-                    <SelectItem key={url} value={url}>{url}</SelectItem>
-                  ))}
-                  {(!apkInfo.urls || apkInfo.urls.length === 0) && (
-                    <SelectItem value="none" disabled>No URLs found</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="oldUrl">URL to Search For</Label>
+              <Input 
+                id="oldUrl" 
+                placeholder="http://old-panel.com:8080" 
+                value={oldUrl} 
+                onChange={e => setOldUrl(e.target.value)} 
+              />
             </div>
             
             <div className="grid gap-2">
-              <Label htmlFor="newUrl">New Panel URL</Label>
+              <Label htmlFor="newUrl">Replacement URL</Label>
               <Input 
                 id="newUrl" 
-                placeholder="http://your-panel.com:8080" 
+                placeholder="http://your-new-panel.com:8080" 
                 value={newUrl} 
                 onChange={e => setNewUrl(e.target.value)} 
               />
