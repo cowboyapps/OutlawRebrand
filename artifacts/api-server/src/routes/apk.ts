@@ -742,11 +742,6 @@ async function recompileApk(session: Session): Promise<void> {
       throw new Error("All build strategies failed. The APK may contain resources that cannot be recompiled.");
     }
 
-    session.progress = "Aligning APK...";
-    await execFileAsync("zipalign", ["-f", "4", unsignedApk, alignedApk], {
-      timeout: 60000,
-    });
-
     session.progress = "Generating signing key...";
     try {
       await fs.access(keystorePath);
@@ -766,6 +761,7 @@ async function recompileApk(session: Session): Promise<void> {
     }
 
     session.progress = "Signing APK...";
+    const apkToSign = unsignedApk;
     await execFileAsync("jarsigner", [
       "-verbose",
       "-sigalg", "SHA256withRSA",
@@ -773,11 +769,16 @@ async function recompileApk(session: Session): Promise<void> {
       "-keystore", keystorePath,
       "-storepass", "rebrander123",
       "-keypass", "rebrander123",
-      alignedApk,
+      apkToSign,
       "rebrander",
-    ], { timeout: 60000, maxBuffer: 10 * 1024 * 1024 });
+    ], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
 
-    await fs.copyFile(alignedApk, session.outputPath);
+    try {
+      await execFileAsync("zipalign", ["-f", "4", apkToSign, alignedApk], { timeout: 60000 });
+      await fs.copyFile(alignedApk, session.outputPath);
+    } catch {
+      await fs.copyFile(apkToSign, session.outputPath);
+    }
 
     session.status = "done";
     session.progress = "APK is ready for download";
