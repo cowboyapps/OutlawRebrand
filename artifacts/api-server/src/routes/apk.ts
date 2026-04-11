@@ -490,6 +490,19 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
     return;
   }
 
+  const targetExt = path.extname(targetPath).toLowerCase();
+  if (targetExt === ".xml") {
+    res.status(400).json({ error: "XML drawable files cannot be replaced with image uploads" });
+    return;
+  }
+
+  const allowedImageExts = [".png", ".jpg", ".jpeg", ".webp"];
+  const uploadedExt = path.extname(req.file.originalname).toLowerCase();
+  if (!allowedImageExts.includes(uploadedExt)) {
+    res.status(400).json({ error: "Only PNG, JPG, JPEG, and WebP image files are allowed" });
+    return;
+  }
+
   const fullTargetPath = path.join(session.decompDir, targetPath);
   const normalized = path.normalize(fullTargetPath);
   if (!normalized.startsWith(session.decompDir + path.sep)) {

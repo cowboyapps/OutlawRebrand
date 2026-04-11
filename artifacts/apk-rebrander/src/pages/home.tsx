@@ -427,42 +427,48 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
         />
         
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {imageList?.images?.map((img: ImageInfo) => (
-            <div 
-              key={img.path} 
-              className="relative group rounded-md border border-border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col"
-              onClick={() => handleImageClick(img.path)}
-            >
-              <div className="h-32 flex items-center justify-center p-4">
-                {img.type === "xml" ? (
-                  <div className="text-muted-foreground flex flex-col items-center">
-                    <ImageIcon className="h-8 w-8 opacity-50 mb-2" />
-                    <span className="text-xs font-mono">XML Drawable</span>
+          {imageList?.images?.map((img: ImageInfo) => {
+            const isXml = img.type === "xml";
+            return (
+              <div 
+                key={img.path} 
+                className={`relative group rounded-md border border-border overflow-hidden bg-muted/30 flex flex-col ${isXml ? "opacity-60" : "cursor-pointer hover:border-primary transition-colors"}`}
+                onClick={() => !isXml && handleImageClick(img.path)}
+              >
+                <div className="h-32 flex items-center justify-center p-4">
+                  {isXml ? (
+                    <div className="text-muted-foreground flex flex-col items-center">
+                      <ImageIcon className="h-8 w-8 opacity-50 mb-2" />
+                      <span className="text-xs font-mono">XML Drawable</span>
+                      <span className="text-[10px] text-muted-foreground mt-1">Read-only</span>
+                    </div>
+                  ) : (
+                    <img 
+                      src={`/api/apk/${sessionId}/image?path=${encodeURIComponent(img.path)}`} 
+                      alt={img.name}
+                      className="max-h-full max-w-full object-contain drop-shadow-md"
+                    />
+                  )}
+                </div>
+                <div className="p-2 text-xs truncate bg-background/90 backdrop-blur border-t border-border mt-auto">
+                  <div className="font-medium truncate" title={img.name}>{img.name}</div>
+                  <div className="text-muted-foreground truncate" title={img.directory}>{img.directory}</div>
+                </div>
+                
+                {replacingPath === img.path && (
+                  <div className="absolute inset-0 bg-background/80 flex items-center justify-center backdrop-blur-sm">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
-                ) : (
-                  <img 
-                    src={`/api/apk/${sessionId}/image?path=${encodeURIComponent(img.path)}`} 
-                    alt={img.name}
-                    className="max-h-full max-w-full object-contain drop-shadow-md"
-                  />
+                )}
+                
+                {!isXml && (
+                  <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                    <Button variant="secondary" size="sm" className="shadow-lg pointer-events-auto">Replace</Button>
+                  </div>
                 )}
               </div>
-              <div className="p-2 text-xs truncate bg-background/90 backdrop-blur border-t border-border mt-auto">
-                <div className="font-medium truncate" title={img.name}>{img.name}</div>
-                <div className="text-muted-foreground truncate" title={img.directory}>{img.directory}</div>
-              </div>
-              
-              {replacingPath === img.path && (
-                <div className="absolute inset-0 bg-background/80 flex items-center justify-center backdrop-blur-sm">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                </div>
-              )}
-              
-              <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                <Button variant="secondary" size="sm" className="shadow-lg pointer-events-auto">Replace</Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {(!imageList?.images || imageList.images.length === 0) && (
             <div className="col-span-full py-12 text-center text-muted-foreground">
               No editable images found.
