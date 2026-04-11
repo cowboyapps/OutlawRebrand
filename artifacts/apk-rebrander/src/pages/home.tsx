@@ -368,10 +368,11 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   const [replacingPath, setReplacingPath] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageClick = (path: string) => {
-    setReplacingPath(path);
+  const handleImageClick = (imgPath: string, isXml: boolean) => {
+    setReplacingPath(imgPath);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+      fileInputRef.current.accept = isXml ? ".xml" : "image/*";
       fileInputRef.current.click();
     }
   };
@@ -432,15 +433,14 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
             return (
               <div 
                 key={img.path} 
-                className={`relative group rounded-md border border-border overflow-hidden bg-muted/30 flex flex-col ${isXml ? "opacity-60" : "cursor-pointer hover:border-primary transition-colors"}`}
-                onClick={() => !isXml && handleImageClick(img.path)}
+                className="relative group rounded-md border border-border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col"
+                onClick={() => handleImageClick(img.path, isXml)}
               >
                 <div className="h-32 flex items-center justify-center p-4">
                   {isXml ? (
                     <div className="text-muted-foreground flex flex-col items-center">
                       <ImageIcon className="h-8 w-8 opacity-50 mb-2" />
                       <span className="text-xs font-mono">XML Drawable</span>
-                      <span className="text-[10px] text-muted-foreground mt-1">Read-only</span>
                     </div>
                   ) : (
                     <img 
@@ -461,11 +461,11 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                   </div>
                 )}
                 
-                {!isXml && (
-                  <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                    <Button variant="secondary" size="sm" className="shadow-lg pointer-events-auto">Replace</Button>
-                  </div>
-                )}
+                <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                  <Button variant="secondary" size="sm" className="shadow-lg pointer-events-auto">
+                    {isXml ? "Replace XML" : "Replace"}
+                  </Button>
+                </div>
               </div>
             );
           })}

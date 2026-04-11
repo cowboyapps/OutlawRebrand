@@ -491,14 +491,15 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
   }
 
   const targetExt = path.extname(targetPath).toLowerCase();
-  if (targetExt === ".xml") {
-    res.status(400).json({ error: "XML drawable files cannot be replaced with image uploads" });
-    return;
-  }
-
   const allowedImageExts = [".png", ".jpg", ".jpeg", ".webp"];
   const uploadedExt = path.extname(req.file.originalname).toLowerCase();
-  if (!allowedImageExts.includes(uploadedExt)) {
+
+  if (targetExt === ".xml") {
+    if (uploadedExt !== ".xml") {
+      res.status(400).json({ error: "XML drawable targets must be replaced with XML files" });
+      return;
+    }
+  } else if (!allowedImageExts.includes(uploadedExt)) {
     res.status(400).json({ error: "Only PNG, JPG, JPEG, and WebP image files are allowed" });
     return;
   }
