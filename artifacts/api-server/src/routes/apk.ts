@@ -661,7 +661,30 @@ function parseFailedFiles(stderr: string, decompDir: string): string[] {
   return [...files];
 }
 
-async function tryApktoolBuild(args: string[], decompDir: string): Promise<void> {
+async function removeApktoolDuplicates(decompDir: string): Promise<number> {
+  let removed = 0;
+  async function walk(dir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.name.startsWith("APKTOOL_DUPLICATE_")) {
+        await fs.unlink(full);
+        removed++;
+      }
+    }
+  }
+  await walk(path.join(decompDir, "res"));
+  return removed;
+}
+
+async function tryApktoolBuild(args: string[]): Promise<void> {
   await execFileAsync("apktool", args, {
     timeout: 300000,
     maxBuffer: 50 * 1024 * 1024,
@@ -675,6 +698,12 @@ async function recompileApk(session: Session): Promise<void> {
   const keystorePath = path.join(WORK_DIR, "debug.keystore");
 
   try {
+    session.progress = "Cleaning up resources...";
+    const dupCount = await removeApktoolDuplicates(session.decompDir);
+    if (dupCount > 0) {
+      logger.info(`Removed ${dupCount} APKTOOL_DUPLICATE files`);
+    }
+
     session.progress = "Recompiling APK with apktool...";
 
     const buildStrategies = [
@@ -686,7 +715,7 @@ async function recompileApk(session: Session): Promise<void> {
     for (const strategy of buildStrategies) {
       try {
         session.progress = `Recompiling APK (${strategy.label})...`;
-        await tryApktoolBuild(strategy.args, session.decompDir);
+        await tryApktoolBuild(strategy.args);
         built = true;
         break;
       } catch (firstErr: unknown) {
@@ -697,7 +726,7 @@ async function recompileApk(session: Session): Promise<void> {
           await fixDuplicateAttributes(session.decompDir, dupFiles);
           try {
             session.progress = `Retrying build (${strategy.label})...`;
-            await tryApktoolBuild(strategy.args, session.decompDir);
+            await tryApktoolBuild(strategy.args);
             built = true;
             break;
           } catch {
