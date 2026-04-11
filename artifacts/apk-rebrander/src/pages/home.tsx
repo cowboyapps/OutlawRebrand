@@ -20,6 +20,7 @@ import {
   useListImages,
   getListImagesQueryKey
 } from "@workspace/api-client-react";
+import type { ImageInfo, SessionStatus } from "@workspace/api-client-react";
 
 const STEPS = [
   { id: 1, name: "Upload APK", icon: FileArchive },
@@ -426,7 +427,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
         />
         
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {imageList?.images?.map((img: any) => (
+          {imageList?.images?.map((img: ImageInfo) => (
             <div 
               key={img.path} 
               className="relative group rounded-md border border-border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col"
@@ -480,7 +481,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   );
 }
 
-function StepBuild({ sessionId, status, statusData, onBack }: { sessionId: string, status?: string, statusData: any, onBack: () => void }) {
+function StepBuild({ sessionId, status, statusData, onBack }: { sessionId: string, status?: string, statusData: SessionStatus | undefined, onBack: () => void }) {
   const { toast } = useToast();
   const [isTriggering, setIsTriggering] = useState(false);
 
