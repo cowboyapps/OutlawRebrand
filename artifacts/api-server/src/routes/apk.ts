@@ -620,12 +620,13 @@ router.post("/apk/:sessionId/recompile", async (req: Request, res: Response) => 
     res.status(404).json({ error: "Session not found" });
     return;
   }
-  if (session.status !== "ready") {
+  if (session.status !== "ready" && session.status !== "error") {
     res.status(400).json({ error: "APK not ready for recompilation" });
     return;
   }
 
   session.status = "recompiling";
+  session.error = undefined;
   session.progress = "Starting recompilation...";
   res.json({ success: true, message: "Recompilation started" });
 

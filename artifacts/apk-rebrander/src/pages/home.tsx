@@ -628,7 +628,7 @@ function StepBuild({ sessionId, status, statusData, onBack }: { sessionId: strin
         )}
 
         <div className="flex flex-col items-center justify-center space-y-6">
-          {status === "ready" && !isTriggering ? (
+          {(status === "ready" || status === "error") && !isTriggering ? (
             <>
               <Package className="h-16 w-16 text-muted-foreground" />
               <div className="text-center max-w-md">
