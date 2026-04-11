@@ -502,6 +502,9 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
   } else if (!allowedImageExts.includes(uploadedExt)) {
     res.status(400).json({ error: "Only PNG, JPG, JPEG, and WebP image files are allowed" });
     return;
+  } else if (targetExt !== uploadedExt && !(targetExt === ".jpg" && uploadedExt === ".jpeg") && !(targetExt === ".jpeg" && uploadedExt === ".jpg")) {
+    res.status(400).json({ error: `Upload format (${uploadedExt}) must match target format (${targetExt})` });
+    return;
   }
 
   const fullTargetPath = path.join(session.decompDir, targetPath);
