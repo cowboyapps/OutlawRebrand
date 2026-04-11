@@ -694,7 +694,6 @@ async function tryApktoolBuild(args: string[]): Promise<void> {
 async function recompileApk(session: Session): Promise<void> {
   const sessionDir = path.dirname(session.apkPath);
   const unsignedApk = path.join(sessionDir, "unsigned.apk");
-  const alignedApk = path.join(sessionDir, "aligned.apk");
   const keystorePath = path.join(WORK_DIR, "debug.keystore");
 
   try {
@@ -760,25 +759,21 @@ async function recompileApk(session: Session): Promise<void> {
       ], { timeout: 30000 });
     }
 
-    session.progress = "Signing APK...";
-    const apkToSign = unsignedApk;
-    await execFileAsync("jarsigner", [
-      "-verbose",
-      "-sigalg", "SHA256withRSA",
-      "-digestalg", "SHA-256",
-      "-keystore", keystorePath,
-      "-storepass", "rebrander123",
-      "-keypass", "rebrander123",
-      apkToSign,
-      "rebrander",
-    ], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
+    session.progress = "Signing APK (v1+v2)...";
+    const toolsDir = path.resolve(__dirname, "../../../../tools");
+    const apksigJar = path.join(toolsDir, "apksigner.jar");
+    const signApkClass = toolsDir;
 
-    try {
-      await execFileAsync("zipalign", ["-f", "4", apkToSign, alignedApk], { timeout: 60000 });
-      await fs.copyFile(alignedApk, session.outputPath);
-    } catch {
-      await fs.copyFile(apkToSign, session.outputPath);
-    }
+    await execFileAsync("java", [
+      "-cp", `${signApkClass}:${apksigJar}`,
+      "SignApk",
+      unsignedApk,
+      session.outputPath,
+      keystorePath,
+      "rebrander123",
+      "rebrander",
+      "rebrander123",
+    ], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
 
     session.status = "done";
     session.progress = "APK is ready for download";
