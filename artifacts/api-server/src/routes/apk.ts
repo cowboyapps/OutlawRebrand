@@ -615,59 +615,56 @@ router.post("/apk/:sessionId/recompile", async (req: Request, res: Response) => 
   });
 });
 
-async function fixDuplicateAttributes(decompDir: string): Promise<void> {
-  const resDir = path.join(decompDir, "res");
-  try {
-    await fs.access(resDir);
-  } catch {
-    return;
-  }
-
-  async function walkXml(dir: string): Promise<string[]> {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    const files: string[] = [];
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        files.push(...(await walkXml(full)));
-      } else if (entry.name.endsWith(".xml")) {
-        files.push(full);
-      }
-    }
-    return files;
-  }
-
-  const xmlFiles = await walkXml(resDir);
-  for (const xmlFile of xmlFiles) {
+async function fixDuplicateAttributes(decompDir: string, targetFiles: string[]): Promise<void> {
+  for (const relPath of targetFiles) {
+    const fullPath = path.join(decompDir, relPath);
     try {
-      const content = await fs.readFile(xmlFile, "utf-8");
-      const fixed = removeDuplicateAttributes(content);
+      const content = await fs.readFile(fullPath, "utf-8");
+      const lines = content.split("\n");
+      const fixedLines = lines.map(line => {
+        const attrMatches = [...line.matchAll(/(\S+)\s*=\s*"[^"]*"/g)];
+        if (attrMatches.length < 2) return line;
+        const seen = new Set<string>();
+        let fixedLine = line;
+        for (let i = attrMatches.length - 1; i >= 0; i--) {
+          const attrName = attrMatches[i][1];
+          if (seen.has(attrName)) {
+            const start = attrMatches[i].index!;
+            const end = start + attrMatches[i][0].length;
+            fixedLine = fixedLine.slice(0, start) + fixedLine.slice(end);
+          }
+          seen.add(attrName);
+        }
+        return fixedLine;
+      });
+      const fixed = fixedLines.join("\n");
       if (fixed !== content) {
-        await fs.writeFile(xmlFile, fixed, "utf-8");
-        logger.info(`Fixed duplicate attributes in ${path.relative(decompDir, xmlFile)}`);
+        await fs.writeFile(fullPath, fixed, "utf-8");
+        logger.info(`Fixed duplicate attributes in ${relPath}`);
       }
     } catch {
-      // skip files that can't be read/written
+      logger.warn(`Could not fix ${relPath}`);
     }
   }
 }
 
-function removeDuplicateAttributes(xml: string): string {
-  return xml.replace(/<([^\s/>]+)((?:\s+[^\s=/>]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s/>]*))?)*)\s*\/?>/g, (match, tag, attrsStr) => {
-    if (!attrsStr || !attrsStr.trim()) return match;
-    const attrRegex = /\s+([^\s=/>]+)(\s*=\s*(?:"[^"]*"|'[^']*'|[^\s/>]*))?/g;
-    const seen = new Set<string>();
-    const attrs: string[] = [];
-    let m;
-    while ((m = attrRegex.exec(attrsStr)) !== null) {
-      const attrName = m[1];
-      if (!seen.has(attrName)) {
-        seen.add(attrName);
-        attrs.push(m[0]);
-      }
+function parseFailedFiles(stderr: string, decompDir: string): string[] {
+  const files = new Set<string>();
+  const regex = /W:\s+(\/[^\s:]+\.xml):\d+:\s*error:\s*duplicate attribute/g;
+  let m;
+  while ((m = regex.exec(stderr)) !== null) {
+    const absPath = m[1];
+    if (absPath.startsWith(decompDir)) {
+      files.add(absPath.slice(decompDir.length + 1));
     }
-    const closing = match.endsWith("/>") ? "/>" : ">";
-    return `<${tag}${attrs.join("")}${closing}`;
+  }
+  return [...files];
+}
+
+async function tryApktoolBuild(args: string[], decompDir: string): Promise<void> {
+  await execFileAsync("apktool", args, {
+    timeout: 300000,
+    maxBuffer: 50 * 1024 * 1024,
   });
 }
 
@@ -678,14 +675,43 @@ async function recompileApk(session: Session): Promise<void> {
   const keystorePath = path.join(WORK_DIR, "debug.keystore");
 
   try {
-    session.progress = "Fixing resource files...";
-    await fixDuplicateAttributes(session.decompDir);
-
     session.progress = "Recompiling APK with apktool...";
-    await execFileAsync("apktool", ["b", "-f", "--use-aapt2", "-o", unsignedApk, session.decompDir], {
-      timeout: 300000,
-      maxBuffer: 50 * 1024 * 1024,
-    });
+
+    const buildStrategies = [
+      { label: "aapt2", args: ["b", "-f", "--use-aapt2", "-o", unsignedApk, session.decompDir] },
+      { label: "aapt1", args: ["b", "-f", "-o", unsignedApk, session.decompDir] },
+    ];
+
+    let built = false;
+    for (const strategy of buildStrategies) {
+      try {
+        session.progress = `Recompiling APK (${strategy.label})...`;
+        await tryApktoolBuild(strategy.args, session.decompDir);
+        built = true;
+        break;
+      } catch (firstErr: unknown) {
+        const stderr = (firstErr as { stderr?: string }).stderr || String(firstErr);
+        const dupFiles = parseFailedFiles(stderr, session.decompDir);
+        if (dupFiles.length > 0) {
+          session.progress = `Fixing ${dupFiles.length} file(s) with duplicate attributes...`;
+          await fixDuplicateAttributes(session.decompDir, dupFiles);
+          try {
+            session.progress = `Retrying build (${strategy.label})...`;
+            await tryApktoolBuild(strategy.args, session.decompDir);
+            built = true;
+            break;
+          } catch {
+            logger.warn(`Build with ${strategy.label} failed after fixing duplicates, trying next strategy`);
+          }
+        } else {
+          logger.warn(`Build with ${strategy.label} failed: ${stderr.slice(0, 500)}`);
+        }
+      }
+    }
+
+    if (!built) {
+      throw new Error("All build strategies failed. The APK may contain resources that cannot be recompiled.");
+    }
 
     session.progress = "Aligning APK...";
     await execFileAsync("zipalign", ["-f", "4", unsignedApk, alignedApk], {
