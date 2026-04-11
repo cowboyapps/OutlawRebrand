@@ -103,7 +103,8 @@ async function decompileApk(session: Session): Promise<void> {
 }
 
 router.get("/apk/:sessionId/status", (req: Request, res: Response) => {
-  const session = sessions.get(req.params.sessionId);
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -117,7 +118,8 @@ router.get("/apk/:sessionId/status", (req: Request, res: Response) => {
 });
 
 router.get("/apk/:sessionId/info", async (req: Request, res: Response) => {
-  const session = sessions.get(req.params.sessionId);
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -277,7 +279,8 @@ async function findImages(decompDir: string): Promise<Array<{ path: string; name
 }
 
 router.put("/apk/:sessionId/name", async (req: Request, res: Response) => {
-  const session = sessions.get(req.params.sessionId);
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -339,7 +342,8 @@ router.put("/apk/:sessionId/name", async (req: Request, res: Response) => {
 });
 
 router.put("/apk/:sessionId/url", async (req: Request, res: Response) => {
-  const session = sessions.get(req.params.sessionId);
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -399,7 +403,8 @@ router.put("/apk/:sessionId/url", async (req: Request, res: Response) => {
 });
 
 router.get("/apk/:sessionId/images", async (req: Request, res: Response) => {
-  const session = sessions.get(req.params.sessionId);
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -419,7 +424,8 @@ router.get("/apk/:sessionId/images", async (req: Request, res: Response) => {
 });
 
 router.get("/apk/:sessionId/image", async (req: Request, res: Response) => {
-  const session = sessions.get(req.params.sessionId);
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -462,7 +468,8 @@ const imageUpload = multer({
 });
 
 router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async (req: Request, res: Response) => {
-  const session = sessions.get(req.params.sessionId);
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -502,7 +509,8 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
 });
 
 router.post("/apk/:sessionId/recompile", async (req: Request, res: Response) => {
-  const session = sessions.get(req.params.sessionId);
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -583,7 +591,8 @@ async function recompileApk(session: Session): Promise<void> {
 }
 
 router.get("/apk/:sessionId/download", async (req: Request, res: Response) => {
-  const session = sessions.get(req.params.sessionId);
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
