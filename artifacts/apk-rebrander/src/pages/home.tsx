@@ -355,8 +355,9 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   });
 
   const [replacingPath, setReplacingPath] = useState<string | null>(null);
+  const [roundForReplace, setRoundForReplace] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [makeRound, setMakeRound] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [xmlPreview, setXmlPreview] = useState<{ path: string; content: string } | null>(null);
@@ -375,13 +376,19 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
         setXmlPreview(null);
         return;
       }
+      setSelectedImage(null);
       fetch(`/api/apk/${sessionId}/image?path=${encodeURIComponent(imgPath)}`)
         .then(r => r.text())
         .then(content => setXmlPreview({ path: imgPath, content }))
         .catch(() => toast({ title: "Error", description: "Failed to load XML content", variant: "destructive" }));
       return;
     }
+    setSelectedImage(selectedImage === imgPath ? null : imgPath);
+  };
+
+  const startReplace = (imgPath: string, round: boolean) => {
     setReplacingPath(imgPath);
+    setRoundForReplace(round);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
       fileInputRef.current.accept = "image/*";
@@ -391,6 +398,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
 
   const handleXmlReplace = (imgPath: string) => {
     setReplacingPath(imgPath);
+    setRoundForReplace(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
       fileInputRef.current.accept = ".xml";
@@ -405,7 +413,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
     const formData = new FormData();
     formData.append("image", file);
     formData.append("targetPath", replacingPath);
-    if (makeRound) {
+    if (roundForReplace) {
       formData.append("makeRound", "true");
     }
 
@@ -419,15 +427,17 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
         throw new Error(data.error || "Failed to replace image");
       }
       
-      const desc = makeRound ? "Image replaced, resized, and made round." : "Image replaced and auto-resized to fit.";
+      const desc = roundForReplace ? "Image replaced, resized, and made round." : "Image replaced and auto-resized to fit.";
       toast({ title: "Success", description: desc });
       queryClient.invalidateQueries({ queryKey: getListImagesQueryKey(sessionId) });
       setXmlPreview(null);
+      setSelectedImage(null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to replace image.";
       toast({ title: "Error", description: msg, variant: "destructive" });
     } finally {
       setReplacingPath(null);
+      setRoundForReplace(false);
     }
   };
 
@@ -456,8 +466,8 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
           onChange={handleFileChange} 
         />
 
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
-          <div className="relative flex-1">
+        <div className="mb-4">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search images by name, path, or folder..."
@@ -466,15 +476,6 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
               className="pl-9"
             />
           </div>
-          <Button
-            variant={makeRound ? "default" : "outline"}
-            size="default"
-            onClick={() => setMakeRound(!makeRound)}
-            title="When enabled, uploaded images will be cropped into a circle"
-          >
-            <Circle className="mr-2 h-4 w-4" />
-            {makeRound ? "Round: ON" : "Make Round"}
-          </Button>
         </div>
 
         {searchQuery && (
@@ -500,11 +501,12 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
           {filteredImages?.map((img: ImageInfo) => {
             const isXml = img.type === "xml";
             const isActive = xmlPreview?.path === img.path;
+            const isSelected = selectedImage === img.path;
             const isRoundIcon = img.name.includes("round") || img.directory.includes("round");
             return (
               <div 
                 key={img.path} 
-                className={`relative group rounded-md border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col ${isActive ? "border-primary ring-2 ring-primary/20" : "border-border"}`}
+                className={`relative group rounded-md border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col ${isActive || isSelected ? "border-primary ring-2 ring-primary/20" : "border-border"}`}
                 onClick={() => handleImageClick(img.path, isXml)}
               >
                 <div className="h-32 flex items-center justify-center p-4">
@@ -536,9 +538,25 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                   </div>
                 )}
                 
-                {!isXml && (
+                {!isXml && isSelected && (
+                  <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center gap-2 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
+                    <Button variant="secondary" size="sm" className="shadow-lg w-32" onClick={() => startReplace(img.path, false)}>
+                      <ImageIcon className="mr-2 h-3 w-3" />
+                      Replace
+                    </Button>
+                    <Button variant="outline" size="sm" className="shadow-lg w-32" onClick={() => startReplace(img.path, true)}>
+                      <Circle className="mr-2 h-3 w-3" />
+                      Replace Round
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setSelectedImage(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+
+                {!isXml && !isSelected && (
                   <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                    <Button variant="secondary" size="sm" className="shadow-lg pointer-events-auto">Replace</Button>
+                    <span className="text-xs font-medium text-primary">Click to replace</span>
                   </div>
                 )}
               </div>
