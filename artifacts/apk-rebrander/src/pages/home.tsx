@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload, Settings, Image as ImageIcon, Package, Check, Download, AlertCircle, FileArchive, Loader2, ArrowRight } from "lucide-react";
+import { Upload, Settings, Image as ImageIcon, Package, Check, Download, AlertCircle, FileArchive, Loader2, ArrowRight, Search, Circle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -355,9 +355,19 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   });
 
   const [replacingPath, setReplacingPath] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [makeRound, setMakeRound] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [xmlPreview, setXmlPreview] = useState<{ path: string; content: string } | null>(null);
+
+  const filteredImages = imageList?.images?.filter((img: ImageInfo) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return img.name.toLowerCase().includes(q) || 
+           img.path.toLowerCase().includes(q) || 
+           img.directory.toLowerCase().includes(q);
+  });
 
   const handleImageClick = (imgPath: string, isXml: boolean) => {
     if (isXml) {
@@ -395,6 +405,9 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
     const formData = new FormData();
     formData.append("image", file);
     formData.append("targetPath", replacingPath);
+    if (makeRound) {
+      formData.append("makeRound", "true");
+    }
 
     try {
       const res = await fetch(`/api/apk/${sessionId}/image/replace`, {
@@ -406,7 +419,8 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
         throw new Error(data.error || "Failed to replace image");
       }
       
-      toast({ title: "Success", description: "Image replaced and auto-resized to fit." });
+      const desc = makeRound ? "Image replaced, resized, and made round." : "Image replaced and auto-resized to fit.";
+      toast({ title: "Success", description: desc });
       queryClient.invalidateQueries({ queryKey: getListImagesQueryKey(sessionId) });
       setXmlPreview(null);
     } catch (err) {
@@ -441,6 +455,33 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
           accept="image/*" 
           onChange={handleFileChange} 
         />
+
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search images by name, path, or folder..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Button
+            variant={makeRound ? "default" : "outline"}
+            size="default"
+            onClick={() => setMakeRound(!makeRound)}
+            title="When enabled, uploaded images will be cropped into a circle"
+          >
+            <Circle className="mr-2 h-4 w-4" />
+            {makeRound ? "Round: ON" : "Make Round"}
+          </Button>
+        </div>
+
+        {searchQuery && (
+          <div className="text-sm text-muted-foreground mb-3">
+            Showing {filteredImages?.length || 0} of {imageList?.images?.length || 0} images
+          </div>
+        )}
         
         {xmlPreview && (
           <div className="mb-4 rounded-md border border-border bg-muted/30 p-4">
@@ -456,9 +497,10 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
         )}
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {imageList?.images?.map((img: ImageInfo) => {
+          {filteredImages?.map((img: ImageInfo) => {
             const isXml = img.type === "xml";
             const isActive = xmlPreview?.path === img.path;
+            const isRoundIcon = img.name.includes("round") || img.directory.includes("round");
             return (
               <div 
                 key={img.path} 
@@ -476,7 +518,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                     <img 
                       src={`/api/apk/${sessionId}/image?path=${encodeURIComponent(img.path)}`} 
                       alt={img.name}
-                      className="max-h-full max-w-full object-contain drop-shadow-md"
+                      className={`max-h-full max-w-full object-contain drop-shadow-md ${isRoundIcon ? "rounded-full" : ""}`}
                     />
                   )}
                 </div>
@@ -502,6 +544,11 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
               </div>
             );
           })}
+          {filteredImages?.length === 0 && searchQuery && (
+            <div className="col-span-full py-12 text-center text-muted-foreground">
+              No images matching "{searchQuery}".
+            </div>
+          )}
           {(!imageList?.images || imageList.images.length === 0) && (
             <div className="col-span-full py-12 text-center text-muted-foreground">
               No editable images found.

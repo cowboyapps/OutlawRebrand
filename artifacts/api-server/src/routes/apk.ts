@@ -541,10 +541,32 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
         // target file may not exist yet
       }
 
+      const makeRound = req.body.makeRound === "true";
       let pipeline = sharp(req.file.path);
 
       if (targetWidth && targetHeight) {
-        pipeline = pipeline.resize(targetWidth, targetHeight, { fit: "fill" });
+        pipeline = pipeline.resize(targetWidth, targetHeight, { fit: "cover" });
+
+        if (makeRound) {
+          const radius = Math.min(targetWidth, targetHeight) / 2;
+          const mask = Buffer.from(
+            `<svg width="${targetWidth}" height="${targetHeight}">` +
+            `<circle cx="${targetWidth / 2}" cy="${targetHeight / 2}" r="${radius}" fill="white"/>` +
+            `</svg>`
+          );
+          pipeline = pipeline.composite([{ input: mask, blend: "dest-in" }]);
+        }
+      } else if (makeRound) {
+        const meta = await sharp(req.file.path).metadata();
+        const w = meta.width || 100;
+        const h = meta.height || 100;
+        const radius = Math.min(w, h) / 2;
+        const mask = Buffer.from(
+          `<svg width="${w}" height="${h}">` +
+          `<circle cx="${w / 2}" cy="${h / 2}" r="${radius}" fill="white"/>` +
+          `</svg>`
+        );
+        pipeline = pipeline.composite([{ input: mask, blend: "dest-in" }]);
       }
 
       const formatMap: Record<string, keyof sharp.FormatEnum> = {
@@ -553,7 +575,7 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
         ".jpeg": "jpeg",
         ".webp": "webp",
       };
-      const outputFormat = formatMap[targetExt] || "png";
+      const outputFormat = makeRound ? "png" : (formatMap[targetExt] || "png");
       pipeline = pipeline.toFormat(outputFormat);
 
       await pipeline.toFile(fullTargetPath + ".tmp");
