@@ -13,4 +13,6 @@ export interface ImageInfo {
   directory: string;
   size: number;
   type: ImageInfoType;
+  width?: number;
+  height?: number;
 }

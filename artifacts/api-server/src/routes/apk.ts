@@ -5,6 +5,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import sharp from "sharp";
 import { logger } from "../lib/logger";
 
 const execFileAsync = promisify(execFile);
@@ -232,8 +233,8 @@ async function findUrls(decompDir: string): Promise<string[]> {
   return Array.from(urls).slice(0, 200);
 }
 
-async function findImages(decompDir: string): Promise<Array<{ path: string; name: string; directory: string; size: number; type: string }>> {
-  const images: Array<{ path: string; name: string; directory: string; size: number; type: string }> = [];
+async function findImages(decompDir: string): Promise<Array<{ path: string; name: string; directory: string; size: number; type: string; width?: number; height?: number }>> {
+  const images: Array<{ path: string; name: string; directory: string; size: number; type: string; width?: number; height?: number }> = [];
   const imageExts = [".png", ".jpg", ".jpeg", ".webp", ".xml"];
 
   async function scanDir(dir: string): Promise<void> {
@@ -258,12 +259,27 @@ async function findImages(decompDir: string): Promise<Array<{ path: string; name
               else if (ext === ".xml") type = "xml";
               else type = "other";
 
+              let width: number | undefined;
+              let height: number | undefined;
+
+              if (type !== "xml") {
+                try {
+                  const metadata = await sharp(fullPath).metadata();
+                  width = metadata.width;
+                  height = metadata.height;
+                } catch {
+                  // skip unreadable images
+                }
+              }
+
               images.push({
                 path: relativePath,
                 name: entry.name,
                 directory: path.dirname(relativePath),
                 size: stat.size,
                 type,
+                width,
+                height,
               });
             }
           }
@@ -499,11 +515,8 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
       res.status(400).json({ error: "XML drawable targets must be replaced with XML files" });
       return;
     }
-  } else if (!allowedImageExts.includes(uploadedExt)) {
+  } else if (!allowedImageExts.includes(uploadedExt) && uploadedExt !== targetExt) {
     res.status(400).json({ error: "Only PNG, JPG, JPEG, and WebP image files are allowed" });
-    return;
-  } else if (targetExt !== uploadedExt && !(targetExt === ".jpg" && uploadedExt === ".jpeg") && !(targetExt === ".jpeg" && uploadedExt === ".jpg")) {
-    res.status(400).json({ error: `Upload format (${uploadedExt}) must match target format (${targetExt})` });
     return;
   }
 
@@ -516,7 +529,39 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
 
   try {
     await fs.mkdir(path.dirname(fullTargetPath), { recursive: true });
-    await fs.copyFile(req.file.path, fullTargetPath);
+
+    if (targetExt !== ".xml") {
+      let targetWidth: number | undefined;
+      let targetHeight: number | undefined;
+      try {
+        const existingMeta = await sharp(fullTargetPath).metadata();
+        targetWidth = existingMeta.width;
+        targetHeight = existingMeta.height;
+      } catch {
+        // target file may not exist yet
+      }
+
+      let pipeline = sharp(req.file.path);
+
+      if (targetWidth && targetHeight) {
+        pipeline = pipeline.resize(targetWidth, targetHeight, { fit: "fill" });
+      }
+
+      const formatMap: Record<string, keyof sharp.FormatEnum> = {
+        ".png": "png",
+        ".jpg": "jpeg",
+        ".jpeg": "jpeg",
+        ".webp": "webp",
+      };
+      const outputFormat = formatMap[targetExt] || "png";
+      pipeline = pipeline.toFormat(outputFormat);
+
+      await pipeline.toFile(fullTargetPath + ".tmp");
+      await fs.rename(fullTargetPath + ".tmp", fullTargetPath);
+    } else {
+      await fs.copyFile(req.file.path, fullTargetPath);
+    }
+
     await fs.unlink(req.file.path);
     res.json({ success: true, message: `Image replaced: ${targetPath}` });
   } catch (err: unknown) {

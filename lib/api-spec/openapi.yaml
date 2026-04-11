@@ -389,6 +389,10 @@ components:
         type:
           type: string
           enum: [png, jpg, xml, webp, other]
+        width:
+          type: integer
+        height:
+          type: integer
       required:
         - path
         - name

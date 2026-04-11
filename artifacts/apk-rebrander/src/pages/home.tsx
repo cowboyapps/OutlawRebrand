@@ -357,11 +357,33 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   const [replacingPath, setReplacingPath] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [xmlPreview, setXmlPreview] = useState<{ path: string; content: string } | null>(null);
+
   const handleImageClick = (imgPath: string, isXml: boolean) => {
+    if (isXml) {
+      if (xmlPreview?.path === imgPath) {
+        setXmlPreview(null);
+        return;
+      }
+      fetch(`/api/apk/${sessionId}/image?path=${encodeURIComponent(imgPath)}`)
+        .then(r => r.text())
+        .then(content => setXmlPreview({ path: imgPath, content }))
+        .catch(() => toast({ title: "Error", description: "Failed to load XML content", variant: "destructive" }));
+      return;
+    }
     setReplacingPath(imgPath);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
-      fileInputRef.current.accept = isXml ? ".xml" : "image/*";
+      fileInputRef.current.accept = "image/*";
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleXmlReplace = (imgPath: string) => {
+    setReplacingPath(imgPath);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.accept = ".xml";
       fileInputRef.current.click();
     }
   };
@@ -379,13 +401,17 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
         method: "POST",
         body: formData
       });
-      if (!res.ok) throw new Error("Failed to replace image");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to replace image");
+      }
       
-      toast({ title: "Success", description: "Image replaced successfully." });
+      toast({ title: "Success", description: "Image replaced and auto-resized to fit." });
       queryClient.invalidateQueries({ queryKey: getListImagesQueryKey(sessionId) });
+      setXmlPreview(null);
     } catch (err) {
-      console.error(err);
-      toast({ title: "Error", description: "Failed to replace image.", variant: "destructive" });
+      const msg = err instanceof Error ? err.message : "Failed to replace image.";
+      toast({ title: "Error", description: msg, variant: "destructive" });
     } finally {
       setReplacingPath(null);
     }
@@ -416,13 +442,27 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
           onChange={handleFileChange} 
         />
         
+        {xmlPreview && (
+          <div className="mb-4 rounded-md border border-border bg-muted/30 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">XML Preview: {xmlPreview.path}</span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => handleXmlReplace(xmlPreview.path)}>Replace XML</Button>
+                <Button size="sm" variant="ghost" onClick={() => setXmlPreview(null)}>Close</Button>
+              </div>
+            </div>
+            <pre className="text-xs font-mono bg-background rounded p-3 overflow-auto max-h-64 border border-border">{xmlPreview.content}</pre>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {imageList?.images?.map((img: ImageInfo) => {
             const isXml = img.type === "xml";
+            const isActive = xmlPreview?.path === img.path;
             return (
               <div 
                 key={img.path} 
-                className="relative group rounded-md border border-border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col"
+                className={`relative group rounded-md border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col ${isActive ? "border-primary ring-2 ring-primary/20" : "border-border"}`}
                 onClick={() => handleImageClick(img.path, isXml)}
               >
                 <div className="h-32 flex items-center justify-center p-4">
@@ -430,6 +470,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                     <div className="text-muted-foreground flex flex-col items-center">
                       <ImageIcon className="h-8 w-8 opacity-50 mb-2" />
                       <span className="text-xs font-mono">XML Drawable</span>
+                      <span className="text-[10px] text-muted-foreground mt-1">Click to preview</span>
                     </div>
                   ) : (
                     <img 
@@ -439,9 +480,12 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                     />
                   )}
                 </div>
-                <div className="p-2 text-xs truncate bg-background/90 backdrop-blur border-t border-border mt-auto">
+                <div className="p-2 text-xs bg-background/90 backdrop-blur border-t border-border mt-auto">
                   <div className="font-medium truncate" title={img.name}>{img.name}</div>
                   <div className="text-muted-foreground truncate" title={img.directory}>{img.directory}</div>
+                  {img.width && img.height && (
+                    <div className="text-muted-foreground">{img.width} x {img.height}px</div>
+                  )}
                 </div>
                 
                 {replacingPath === img.path && (
@@ -450,11 +494,11 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                   </div>
                 )}
                 
-                <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                  <Button variant="secondary" size="sm" className="shadow-lg pointer-events-auto">
-                    {isXml ? "Replace XML" : "Replace"}
-                  </Button>
-                </div>
+                {!isXml && (
+                  <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                    <Button variant="secondary" size="sm" className="shadow-lg pointer-events-auto">Replace</Button>
+                  </div>
+                )}
               </div>
             );
           })}

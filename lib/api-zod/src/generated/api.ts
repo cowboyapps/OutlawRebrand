@@ -114,6 +114,8 @@ export const ListImagesResponse = zod.object({
       directory: zod.string(),
       size: zod.number(),
       type: zod.enum(["png", "jpg", "xml", "webp", "other"]),
+      width: zod.number().optional(),
+      height: zod.number().optional(),
     }),
   ),
   total: zod.number(),
