@@ -615,6 +615,62 @@ router.post("/apk/:sessionId/recompile", async (req: Request, res: Response) => 
   });
 });
 
+async function fixDuplicateAttributes(decompDir: string): Promise<void> {
+  const resDir = path.join(decompDir, "res");
+  try {
+    await fs.access(resDir);
+  } catch {
+    return;
+  }
+
+  async function walkXml(dir: string): Promise<string[]> {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const files: string[] = [];
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...(await walkXml(full)));
+      } else if (entry.name.endsWith(".xml")) {
+        files.push(full);
+      }
+    }
+    return files;
+  }
+
+  const xmlFiles = await walkXml(resDir);
+  for (const xmlFile of xmlFiles) {
+    try {
+      const content = await fs.readFile(xmlFile, "utf-8");
+      const fixed = removeDuplicateAttributes(content);
+      if (fixed !== content) {
+        await fs.writeFile(xmlFile, fixed, "utf-8");
+        logger.info(`Fixed duplicate attributes in ${path.relative(decompDir, xmlFile)}`);
+      }
+    } catch {
+      // skip files that can't be read/written
+    }
+  }
+}
+
+function removeDuplicateAttributes(xml: string): string {
+  return xml.replace(/<([^\s/>]+)((?:\s+[^\s=/>]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s/>]*))?)*)\s*\/?>/g, (match, tag, attrsStr) => {
+    if (!attrsStr || !attrsStr.trim()) return match;
+    const attrRegex = /\s+([^\s=/>]+)(\s*=\s*(?:"[^"]*"|'[^']*'|[^\s/>]*))?/g;
+    const seen = new Set<string>();
+    const attrs: string[] = [];
+    let m;
+    while ((m = attrRegex.exec(attrsStr)) !== null) {
+      const attrName = m[1];
+      if (!seen.has(attrName)) {
+        seen.add(attrName);
+        attrs.push(m[0]);
+      }
+    }
+    const closing = match.endsWith("/>") ? "/>" : ">";
+    return `<${tag}${attrs.join("")}${closing}`;
+  });
+}
+
 async function recompileApk(session: Session): Promise<void> {
   const sessionDir = path.dirname(session.apkPath);
   const unsignedApk = path.join(sessionDir, "unsigned.apk");
@@ -622,8 +678,11 @@ async function recompileApk(session: Session): Promise<void> {
   const keystorePath = path.join(WORK_DIR, "debug.keystore");
 
   try {
+    session.progress = "Fixing resource files...";
+    await fixDuplicateAttributes(session.decompDir);
+
     session.progress = "Recompiling APK with apktool...";
-    await execFileAsync("apktool", ["b", "-f", "-o", unsignedApk, session.decompDir], {
+    await execFileAsync("apktool", ["b", "-f", "--use-aapt2", "-o", unsignedApk, session.decompDir], {
       timeout: 300000,
       maxBuffer: 50 * 1024 * 1024,
     });
