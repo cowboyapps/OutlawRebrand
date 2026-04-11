@@ -8,3 +8,96 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface SuccessResponse {
+  success: boolean;
+  message?: string;
+}
+
+export interface SessionInfo {
+  sessionId: string;
+  status: string;
+  fileName: string;
+}
+
+export type SessionStatusStatus =
+  (typeof SessionStatusStatus)[keyof typeof SessionStatusStatus];
+
+export const SessionStatusStatus = {
+  uploading: "uploading",
+  decompiling: "decompiling",
+  ready: "ready",
+  recompiling: "recompiling",
+  done: "done",
+  error: "error",
+} as const;
+
+export interface SessionStatus {
+  sessionId: string;
+  status: SessionStatusStatus;
+  error?: string;
+  progress?: string;
+}
+
+export interface ApkInfo {
+  appName: string;
+  packageName: string;
+  versionName?: string;
+  versionCode?: string;
+  urls: string[];
+  imageCount: number;
+}
+
+export interface UpdateNameBody {
+  newName: string;
+}
+
+export interface UpdateUrlBody {
+  oldUrl: string;
+  newUrl: string;
+}
+
+export interface UrlUpdateResult {
+  success: boolean;
+  replacements: number;
+}
+
+export type ImageInfoType = (typeof ImageInfoType)[keyof typeof ImageInfoType];
+
+export const ImageInfoType = {
+  png: "png",
+  jpg: "jpg",
+  xml: "xml",
+  webp: "webp",
+  other: "other",
+} as const;
+
+export interface ImageInfo {
+  path: string;
+  name: string;
+  directory: string;
+  size: number;
+  type: ImageInfoType;
+}
+
+export interface ImageList {
+  images: ImageInfo[];
+  total: number;
+}
+
+export type UploadApkBody = {
+  apk: Blob;
+};
+
+export type GetImageParams = {
+  path: string;
+};
+
+export type ReplaceImageBody = {
+  image: Blob;
+  targetPath: string;
+};

@@ -14,3 +14,154 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Uploads an APK and starts decompilation automatically
+ * @summary Upload an APK file
+ */
+export const UploadApkBody = zod.object({
+  apk: zod.instanceof(File),
+});
+
+export const UploadApkResponse = zod.object({
+  sessionId: zod.string(),
+  status: zod.string(),
+  fileName: zod.string(),
+});
+
+/**
+ * @summary Get session status
+ */
+export const GetSessionStatusParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const GetSessionStatusResponse = zod.object({
+  sessionId: zod.string(),
+  status: zod.enum([
+    "uploading",
+    "decompiling",
+    "ready",
+    "recompiling",
+    "done",
+    "error",
+  ]),
+  error: zod.string().optional(),
+  progress: zod.string().optional(),
+});
+
+/**
+ * @summary Get decompiled APK info
+ */
+export const GetApkInfoParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const GetApkInfoResponse = zod.object({
+  appName: zod.string(),
+  packageName: zod.string(),
+  versionName: zod.string().optional(),
+  versionCode: zod.string().optional(),
+  urls: zod.array(zod.string()),
+  imageCount: zod.number(),
+});
+
+/**
+ * @summary Update app name
+ */
+export const UpdateAppNameParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const UpdateAppNameBody = zod.object({
+  newName: zod.string(),
+});
+
+export const UpdateAppNameResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Update panel URL
+ */
+export const UpdatePanelUrlParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const UpdatePanelUrlBody = zod.object({
+  oldUrl: zod.string(),
+  newUrl: zod.string(),
+});
+
+export const UpdatePanelUrlResponse = zod.object({
+  success: zod.boolean(),
+  replacements: zod.number(),
+});
+
+/**
+ * @summary List all images in the APK
+ */
+export const ListImagesParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const ListImagesResponse = zod.object({
+  images: zod.array(
+    zod.object({
+      path: zod.string(),
+      name: zod.string(),
+      directory: zod.string(),
+      size: zod.number(),
+      type: zod.enum(["png", "jpg", "xml", "webp", "other"]),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * @summary Get a specific image file
+ */
+export const GetImageParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const GetImageQueryParams = zod.object({
+  path: zod.coerce.string(),
+});
+
+/**
+ * @summary Replace an image in the APK
+ */
+export const ReplaceImageParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const ReplaceImageBody = zod.object({
+  image: zod.instanceof(File),
+  targetPath: zod.string(),
+});
+
+export const ReplaceImageResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Recompile the modified APK
+ */
+export const RecompileApkParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const RecompileApkResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Download the recompiled APK
+ */
+export const DownloadApkParams = zod.object({
+  sessionId: zod.coerce.string(),
+});

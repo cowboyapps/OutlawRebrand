@@ -5,18 +5,35 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ApkInfo,
+  ErrorResponse,
+  GetImageParams,
+  HealthStatus,
+  ImageList,
+  ReplaceImageBody,
+  SessionInfo,
+  SessionStatus,
+  SuccessResponse,
+  UpdateNameBody,
+  UpdateUrlBody,
+  UploadApkBody,
+  UrlUpdateResult,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +109,897 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Uploads an APK and starts decompilation automatically
+ * @summary Upload an APK file
+ */
+export const getUploadApkUrl = () => {
+  return `/api/apk/upload`;
+};
+
+export const uploadApk = async (
+  uploadApkBody: UploadApkBody,
+  options?: RequestInit,
+): Promise<SessionInfo> => {
+  const formData = new FormData();
+  formData.append(`apk`, uploadApkBody.apk);
+
+  return customFetch<SessionInfo>(getUploadApkUrl(), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getUploadApkMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadApk>>,
+    TError,
+    { data: BodyType<UploadApkBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof uploadApk>>,
+  TError,
+  { data: BodyType<UploadApkBody> },
+  TContext
+> => {
+  const mutationKey = ["uploadApk"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof uploadApk>>,
+    { data: BodyType<UploadApkBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return uploadApk(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UploadApkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof uploadApk>>
+>;
+export type UploadApkMutationBody = BodyType<UploadApkBody>;
+export type UploadApkMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Upload an APK file
+ */
+export const useUploadApk = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof uploadApk>>,
+    TError,
+    { data: BodyType<UploadApkBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof uploadApk>>,
+  TError,
+  { data: BodyType<UploadApkBody> },
+  TContext
+> => {
+  return useMutation(getUploadApkMutationOptions(options));
+};
+
+/**
+ * @summary Get session status
+ */
+export const getGetSessionStatusUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/status`;
+};
+
+export const getSessionStatus = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<SessionStatus> => {
+  return customFetch<SessionStatus>(getGetSessionStatusUrl(sessionId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSessionStatusQueryKey = (sessionId: string) => {
+  return [`/api/apk/${sessionId}/status`] as const;
+};
+
+export const getGetSessionStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSessionStatus>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSessionStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetSessionStatusQueryKey(sessionId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSessionStatus>>
+  > = ({ signal }) =>
+    getSessionStatus(sessionId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSessionStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSessionStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSessionStatus>>
+>;
+export type GetSessionStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get session status
+ */
+
+export function useGetSessionStatus<
+  TData = Awaited<ReturnType<typeof getSessionStatus>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSessionStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSessionStatusQueryOptions(sessionId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get decompiled APK info
+ */
+export const getGetApkInfoUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/info`;
+};
+
+export const getApkInfo = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<ApkInfo> => {
+  return customFetch<ApkInfo>(getGetApkInfoUrl(sessionId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetApkInfoQueryKey = (sessionId: string) => {
+  return [`/api/apk/${sessionId}/info`] as const;
+};
+
+export const getGetApkInfoQueryOptions = <
+  TData = Awaited<ReturnType<typeof getApkInfo>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getApkInfo>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetApkInfoQueryKey(sessionId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getApkInfo>>> = ({
+    signal,
+  }) => getApkInfo(sessionId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getApkInfo>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetApkInfoQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getApkInfo>>
+>;
+export type GetApkInfoQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get decompiled APK info
+ */
+
+export function useGetApkInfo<
+  TData = Awaited<ReturnType<typeof getApkInfo>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getApkInfo>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetApkInfoQueryOptions(sessionId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update app name
+ */
+export const getUpdateAppNameUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/name`;
+};
+
+export const updateAppName = async (
+  sessionId: string,
+  updateNameBody: UpdateNameBody,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getUpdateAppNameUrl(sessionId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateNameBody),
+  });
+};
+
+export const getUpdateAppNameMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAppName>>,
+    TError,
+    { sessionId: string; data: BodyType<UpdateNameBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAppName>>,
+  TError,
+  { sessionId: string; data: BodyType<UpdateNameBody> },
+  TContext
+> => {
+  const mutationKey = ["updateAppName"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAppName>>,
+    { sessionId: string; data: BodyType<UpdateNameBody> }
+  > = (props) => {
+    const { sessionId, data } = props ?? {};
+
+    return updateAppName(sessionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAppNameMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAppName>>
+>;
+export type UpdateAppNameMutationBody = BodyType<UpdateNameBody>;
+export type UpdateAppNameMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update app name
+ */
+export const useUpdateAppName = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAppName>>,
+    TError,
+    { sessionId: string; data: BodyType<UpdateNameBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAppName>>,
+  TError,
+  { sessionId: string; data: BodyType<UpdateNameBody> },
+  TContext
+> => {
+  return useMutation(getUpdateAppNameMutationOptions(options));
+};
+
+/**
+ * @summary Update panel URL
+ */
+export const getUpdatePanelUrlUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/url`;
+};
+
+export const updatePanelUrl = async (
+  sessionId: string,
+  updateUrlBody: UpdateUrlBody,
+  options?: RequestInit,
+): Promise<UrlUpdateResult> => {
+  return customFetch<UrlUpdateResult>(getUpdatePanelUrlUrl(sessionId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateUrlBody),
+  });
+};
+
+export const getUpdatePanelUrlMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePanelUrl>>,
+    TError,
+    { sessionId: string; data: BodyType<UpdateUrlBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updatePanelUrl>>,
+  TError,
+  { sessionId: string; data: BodyType<UpdateUrlBody> },
+  TContext
+> => {
+  const mutationKey = ["updatePanelUrl"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updatePanelUrl>>,
+    { sessionId: string; data: BodyType<UpdateUrlBody> }
+  > = (props) => {
+    const { sessionId, data } = props ?? {};
+
+    return updatePanelUrl(sessionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdatePanelUrlMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updatePanelUrl>>
+>;
+export type UpdatePanelUrlMutationBody = BodyType<UpdateUrlBody>;
+export type UpdatePanelUrlMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update panel URL
+ */
+export const useUpdatePanelUrl = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePanelUrl>>,
+    TError,
+    { sessionId: string; data: BodyType<UpdateUrlBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updatePanelUrl>>,
+  TError,
+  { sessionId: string; data: BodyType<UpdateUrlBody> },
+  TContext
+> => {
+  return useMutation(getUpdatePanelUrlMutationOptions(options));
+};
+
+/**
+ * @summary List all images in the APK
+ */
+export const getListImagesUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/images`;
+};
+
+export const listImages = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<ImageList> => {
+  return customFetch<ImageList>(getListImagesUrl(sessionId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListImagesQueryKey = (sessionId: string) => {
+  return [`/api/apk/${sessionId}/images`] as const;
+};
+
+export const getListImagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listImages>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listImages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListImagesQueryKey(sessionId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listImages>>> = ({
+    signal,
+  }) => listImages(sessionId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listImages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListImagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listImages>>
+>;
+export type ListImagesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all images in the APK
+ */
+
+export function useListImages<
+  TData = Awaited<ReturnType<typeof listImages>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listImages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListImagesQueryOptions(sessionId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get a specific image file
+ */
+export const getGetImageUrl = (sessionId: string, params: GetImageParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/apk/${sessionId}/image?${stringifiedParams}`
+    : `/api/apk/${sessionId}/image`;
+};
+
+export const getImage = async (
+  sessionId: string,
+  params: GetImageParams,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetImageUrl(sessionId, params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetImageQueryKey = (
+  sessionId: string,
+  params?: GetImageParams,
+) => {
+  return [`/api/apk/${sessionId}/image`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetImageQueryOptions = <
+  TData = Awaited<ReturnType<typeof getImage>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  params: GetImageParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetImageQueryKey(sessionId, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getImage>>> = ({
+    signal,
+  }) => getImage(sessionId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getImage>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetImageQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getImage>>
+>;
+export type GetImageQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get a specific image file
+ */
+
+export function useGetImage<
+  TData = Awaited<ReturnType<typeof getImage>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  params: GetImageParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetImageQueryOptions(sessionId, params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Replace an image in the APK
+ */
+export const getReplaceImageUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/image/replace`;
+};
+
+export const replaceImage = async (
+  sessionId: string,
+  replaceImageBody: ReplaceImageBody,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  const formData = new FormData();
+  formData.append(`image`, replaceImageBody.image);
+  formData.append(`targetPath`, replaceImageBody.targetPath);
+
+  return customFetch<SuccessResponse>(getReplaceImageUrl(sessionId), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getReplaceImageMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replaceImage>>,
+    TError,
+    { sessionId: string; data: BodyType<ReplaceImageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof replaceImage>>,
+  TError,
+  { sessionId: string; data: BodyType<ReplaceImageBody> },
+  TContext
+> => {
+  const mutationKey = ["replaceImage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof replaceImage>>,
+    { sessionId: string; data: BodyType<ReplaceImageBody> }
+  > = (props) => {
+    const { sessionId, data } = props ?? {};
+
+    return replaceImage(sessionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReplaceImageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof replaceImage>>
+>;
+export type ReplaceImageMutationBody = BodyType<ReplaceImageBody>;
+export type ReplaceImageMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Replace an image in the APK
+ */
+export const useReplaceImage = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replaceImage>>,
+    TError,
+    { sessionId: string; data: BodyType<ReplaceImageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof replaceImage>>,
+  TError,
+  { sessionId: string; data: BodyType<ReplaceImageBody> },
+  TContext
+> => {
+  return useMutation(getReplaceImageMutationOptions(options));
+};
+
+/**
+ * @summary Recompile the modified APK
+ */
+export const getRecompileApkUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/recompile`;
+};
+
+export const recompileApk = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getRecompileApkUrl(sessionId), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRecompileApkMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recompileApk>>,
+    TError,
+    { sessionId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recompileApk>>,
+  TError,
+  { sessionId: string },
+  TContext
+> => {
+  const mutationKey = ["recompileApk"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recompileApk>>,
+    { sessionId: string }
+  > = (props) => {
+    const { sessionId } = props ?? {};
+
+    return recompileApk(sessionId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecompileApkMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recompileApk>>
+>;
+
+export type RecompileApkMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Recompile the modified APK
+ */
+export const useRecompileApk = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recompileApk>>,
+    TError,
+    { sessionId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recompileApk>>,
+  TError,
+  { sessionId: string },
+  TContext
+> => {
+  return useMutation(getRecompileApkMutationOptions(options));
+};
+
+/**
+ * @summary Download the recompiled APK
+ */
+export const getDownloadApkUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/download`;
+};
+
+export const downloadApk = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getDownloadApkUrl(sessionId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getDownloadApkQueryKey = (sessionId: string) => {
+  return [`/api/apk/${sessionId}/download`] as const;
+};
+
+export const getDownloadApkQueryOptions = <
+  TData = Awaited<ReturnType<typeof downloadApk>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadApk>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getDownloadApkQueryKey(sessionId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadApk>>> = ({
+    signal,
+  }) => downloadApk(sessionId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof downloadApk>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type DownloadApkQueryResult = NonNullable<
+  Awaited<ReturnType<typeof downloadApk>>
+>;
+export type DownloadApkQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Download the recompiled APK
+ */
+
+export function useDownloadApk<
+  TData = Awaited<ReturnType<typeof downloadApk>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof downloadApk>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getDownloadApkQueryOptions(sessionId, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

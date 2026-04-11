@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: apk
+    description: APK rebranding operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,244 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /apk/upload:
+    post:
+      operationId: uploadApk
+      tags: [apk]
+      summary: Upload an APK file
+      description: Uploads an APK and starts decompilation automatically
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                apk:
+                  type: string
+                  format: binary
+              required:
+                - apk
+      responses:
+        "200":
+          description: APK uploaded and decompilation started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionInfo"
+        "400":
+          description: Invalid file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /apk/{sessionId}/status:
+    get:
+      operationId: getSessionStatus
+      tags: [apk]
+      summary: Get session status
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStatus"
+
+  /apk/{sessionId}/info:
+    get:
+      operationId: getApkInfo
+      tags: [apk]
+      summary: Get decompiled APK info
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: APK info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApkInfo"
+
+  /apk/{sessionId}/name:
+    put:
+      operationId: updateAppName
+      tags: [apk]
+      summary: Update app name
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNameBody"
+      responses:
+        "200":
+          description: Name updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /apk/{sessionId}/url:
+    put:
+      operationId: updatePanelUrl
+      tags: [apk]
+      summary: Update panel URL
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUrlBody"
+      responses:
+        "200":
+          description: URL updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UrlUpdateResult"
+
+  /apk/{sessionId}/images:
+    get:
+      operationId: listImages
+      tags: [apk]
+      summary: List all images in the APK
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of images
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageList"
+
+  /apk/{sessionId}/image:
+    get:
+      operationId: getImage
+      tags: [apk]
+      summary: Get a specific image file
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Image file
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+
+  /apk/{sessionId}/image/replace:
+    post:
+      operationId: replaceImage
+      tags: [apk]
+      summary: Replace an image in the APK
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                targetPath:
+                  type: string
+              required:
+                - image
+                - targetPath
+      responses:
+        "200":
+          description: Image replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /apk/{sessionId}/recompile:
+    post:
+      operationId: recompileApk
+      tags: [apk]
+      summary: Recompile the modified APK
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Recompilation started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /apk/{sessionId}/download:
+    get:
+      operationId: downloadApk
+      tags: [apk]
+      summary: Download the recompiled APK
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: APK file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +274,137 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+
+    SessionInfo:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        status:
+          type: string
+        fileName:
+          type: string
+      required:
+        - sessionId
+        - status
+        - fileName
+
+    SessionStatus:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        status:
+          type: string
+          enum: [uploading, decompiling, ready, recompiling, done, error]
+        error:
+          type: string
+        progress:
+          type: string
+      required:
+        - sessionId
+        - status
+
+    ApkInfo:
+      type: object
+      properties:
+        appName:
+          type: string
+        packageName:
+          type: string
+        versionName:
+          type: string
+        versionCode:
+          type: string
+        urls:
+          type: array
+          items:
+            type: string
+        imageCount:
+          type: integer
+      required:
+        - appName
+        - packageName
+        - urls
+        - imageCount
+
+    UpdateNameBody:
+      type: object
+      properties:
+        newName:
+          type: string
+      required:
+        - newName
+
+    UpdateUrlBody:
+      type: object
+      properties:
+        oldUrl:
+          type: string
+        newUrl:
+          type: string
+      required:
+        - oldUrl
+        - newUrl
+
+    UrlUpdateResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        replacements:
+          type: integer
+      required:
+        - success
+        - replacements
+
+    ImageInfo:
+      type: object
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        directory:
+          type: string
+        size:
+          type: integer
+        type:
+          type: string
+          enum: [png, jpg, xml, webp, other]
+      required:
+        - path
+        - name
+        - directory
+        - size
+        - type
+
+    ImageList:
+      type: object
+      properties:
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageInfo"
+        total:
+          type: integer
+      required:
+        - images
+        - total

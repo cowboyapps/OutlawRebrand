@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "APK Rebrander"
+version = "1.0.0"
+id = "artifacts/apk-rebrander"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 8080
+
+[services.development]
+run = "echo 'Frontend served via API server on port 8080'"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/apk-rebrander", "run", "build" ]
+publicDir = "artifacts/apk-rebrander/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "8080"
+BASE_PATH = "/"
