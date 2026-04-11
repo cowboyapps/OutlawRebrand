@@ -25,6 +25,26 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
+const MAX_SESSIONS = 3;
+
+async function cleanupOldSessions(): Promise<void> {
+  if (sessions.size <= MAX_SESSIONS) return;
+  const sorted = [...sessions.entries()].sort((a, b) => {
+    const aId = parseInt(a[0].slice(0, 8), 36);
+    const bId = parseInt(b[0].slice(0, 8), 36);
+    return aId - bId;
+  });
+  while (sorted.length > MAX_SESSIONS) {
+    const [id, session] = sorted.shift()!;
+    if (session.status === "recompiling" || session.status === "decompiling") continue;
+    try {
+      const sessionDir = path.dirname(session.apkPath);
+      await fs.rm(sessionDir, { recursive: true, force: true });
+      logger.info(`Cleaned up old session ${id}`);
+    } catch { /* ignore */ }
+    sessions.delete(id);
+  }
+}
 
 const upload = multer({
   dest: path.join(WORK_DIR, "uploads"),
@@ -69,6 +89,7 @@ router.post("/apk/upload", upload.single("apk"), async (req: Request, res: Respo
       outputPath,
     };
     sessions.set(sessionId, session);
+    cleanupOldSessions().catch(() => {});
 
     res.json({
       sessionId,
