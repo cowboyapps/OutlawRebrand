@@ -15,7 +15,6 @@ import {
   useGetApkInfo,
   getGetApkInfoQueryKey,
   useUpdateAppName,
-  useUpdatePanelUrl,
   useSearchKeyword,
   useBatchReplace,
   useListImages,
