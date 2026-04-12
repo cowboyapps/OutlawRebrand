@@ -1036,6 +1036,139 @@ function parseFailedFiles(stderr: string, decompDir: string): string[] {
   return [...files];
 }
 
+interface EnumErrorInfo {
+  file: string;
+  line: number;
+}
+
+function parseEnumErrors(stderr: string, decompDir: string): EnumErrorInfo[] {
+  const errors: EnumErrorInfo[] = [];
+  const regex = /W:\s+(\/[^\s:]+\.xml):(\d+):\s*error:\s*expected enum but got \(raw string\)/g;
+  let m;
+  while ((m = regex.exec(stderr)) !== null) {
+    const absPath = m[1];
+    const lineNum = parseInt(m[2], 10);
+    if (absPath.startsWith(decompDir)) {
+      errors.push({ file: absPath, line: lineNum });
+    }
+  }
+  return errors;
+}
+
+async function fixEnumErrors(errors: EnumErrorInfo[]): Promise<number> {
+  const fileGroups = new Map<string, number[]>();
+  for (const err of errors) {
+    const lines = fileGroups.get(err.file) || [];
+    lines.push(err.line);
+    fileGroups.set(err.file, lines);
+  }
+
+  let fixed = 0;
+  for (const [filePath, errorLines] of fileGroups) {
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      const lines = content.split("\n");
+      const errorLineSet = new Set(errorLines);
+
+      const fixedLines = lines.map((line, idx) => {
+        const lineNum = idx + 1;
+        if (!errorLineSet.has(lineNum)) return line;
+
+        let fixedLine = line;
+        if (fixedLine.includes("<item") && fixedLine.includes("</item>")) {
+          fixedLine = `<!-- ${fixedLine.trim().replace(/--/g, "- -")} -->`;
+        } else {
+          fixedLine = fixedLine.replace(
+            /(\w+:?\w+)\s*=\s*"(\d+)"/g,
+            (match, attr) => {
+              const enumAttrs = [
+                "android:ellipsize", "android:gravity", "android:inputType",
+                "android:orientation", "android:visibility", "android:scrollbarStyle",
+                "android:layerType", "android:overScrollMode", "android:importantForAccessibility",
+                "android:drawingCacheQuality", "android:layoutDirection", "android:textDirection",
+                "android:textAlignment", "android:breakStrategy", "android:hyphenationFrequency",
+                "android:autoSizeTextType", "android:justificationMode",
+              ];
+              if (enumAttrs.some(a => attr === a || attr.endsWith(`:${a.split(":")[1]}`))) {
+                return "";
+              }
+              return match;
+            }
+          );
+        }
+
+        if (fixedLine !== line) fixed++;
+        return fixedLine;
+      });
+
+      const newContent = fixedLines.join("\n");
+      if (newContent !== content) {
+        await fs.writeFile(filePath, newContent, "utf-8");
+        logger.info(`Fixed enum errors in ${filePath} (lines: ${errorLines.join(",")})`);
+      }
+    } catch (err) {
+      logger.warn(`Could not fix enum errors in ${filePath}: ${err}`);
+    }
+  }
+  return fixed;
+}
+
+async function fixAllEnumIssuesInStyles(decompDir: string): Promise<number> {
+  let fixed = 0;
+
+  async function walk(dir: string): Promise<void> {
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else if (entry.name.endsWith(".xml")) {
+          try {
+            const content = await fs.readFile(full, "utf-8");
+            let newContent = content;
+            newContent = newContent.replace(
+              /<item\s+name="([^"]*)"[^>]*>\s*(\d+)\s*<\/item>/g,
+              (match, name, value) => {
+                const enumNames = [
+                  "ellipsize", "gravity", "inputType", "orientation", "visibility",
+                  "scrollbarStyle", "layerType", "overScrollMode", "importantForAccessibility",
+                  "drawingCacheQuality", "layoutDirection", "textDirection", "textAlignment",
+                  "breakStrategy", "hyphenationFrequency", "autoSizeTextType", "justificationMode",
+                  "scrollIndicators", "forceHasOverlappingRendering", "fontWeight",
+                ];
+                const nameLC = name.toLowerCase();
+                const isEnum = enumNames.some(e => nameLC.includes(e));
+                if (isEnum || parseInt(value) <= 20) {
+                  fixed++;
+                  return `<!-- removed: ${match.replace(/--/g, "- -")} -->`;
+                }
+                return match;
+              }
+            );
+            if (newContent !== content) {
+              await fs.writeFile(full, newContent, "utf-8");
+              logger.info(`Pre-fixed enum values in ${path.relative(decompDir, full)}`);
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+
+  await walk(path.join(decompDir, "res", "values"));
+  const resDir = path.join(decompDir, "res");
+  try {
+    const resDirs = await fs.readdir(resDir, { withFileTypes: true });
+    for (const d of resDirs) {
+      if (d.isDirectory() && d.name.startsWith("values")) {
+        await walk(path.join(resDir, d.name));
+      }
+    }
+  } catch {}
+  return fixed;
+}
+
 async function removeApktoolDuplicates(decompDir: string): Promise<number> {
   let removed = 0;
   async function walk(dir: string): Promise<void> {
@@ -1164,6 +1297,12 @@ async function recompileApk(session: Session): Promise<void> {
       logger.info(`Removed ${smaliRemoved} smali_assets directories (originals preserved)`);
     }
 
+    session.progress = "Fixing resource issues...";
+    const enumFixCount = await fixAllEnumIssuesInStyles(session.decompDir);
+    if (enumFixCount > 0) {
+      logger.info(`Pre-fixed ${enumFixCount} enum issues in styles.xml files`);
+    }
+
     session.progress = "Recompiling APK with apktool...";
 
     const buildStrategies = [
@@ -1174,37 +1313,48 @@ async function recompileApk(session: Session): Promise<void> {
     let built = false;
     const buildErrors: string[] = [];
     for (const strategy of buildStrategies) {
-      try {
-        session.progress = `Recompiling APK (${strategy.label})...`;
-        logger.info(`Trying build strategy: ${strategy.label}, args: ${JSON.stringify(strategy.args)}`);
-        await tryApktoolBuild(strategy.args);
-        built = true;
-        logger.info(`Build succeeded with strategy: ${strategy.label}`);
-        break;
-      } catch (firstErr: unknown) {
-        const stderr = (firstErr as { stderr?: string }).stderr || "";
-        const errMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
-        const fullError = stderr || errMsg;
-        logger.error(`Build with ${strategy.label} failed: ${fullError.slice(0, 2000)}`);
-        buildErrors.push(`[${strategy.label}] ${fullError.slice(0, 500)}`);
-        const dupFiles = parseFailedFiles(stderr, session.decompDir);
-        if (dupFiles.length > 0) {
-          session.progress = `Fixing ${dupFiles.length} file(s) with duplicate attributes...`;
-          await fixDuplicateAttributes(session.decompDir, dupFiles);
-          try {
-            session.progress = `Retrying build (${strategy.label})...`;
-            await tryApktoolBuild(strategy.args);
-            built = true;
-            logger.info(`Build succeeded with strategy: ${strategy.label} (after fixing duplicates)`);
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          session.progress = `Recompiling APK (${strategy.label}${attempts > 1 ? `, attempt ${attempts}` : ""})...`;
+          logger.info(`Trying build strategy: ${strategy.label}, attempt ${attempts}`);
+          await tryApktoolBuild(strategy.args);
+          built = true;
+          logger.info(`Build succeeded with strategy: ${strategy.label} (attempt ${attempts})`);
+          break;
+        } catch (err: unknown) {
+          const stderr = (err as { stderr?: string }).stderr || "";
+          const errMsg = err instanceof Error ? err.message : String(err);
+          const fullError = stderr || errMsg;
+          logger.error(`Build ${strategy.label} attempt ${attempts} failed: ${fullError.slice(0, 2000)}`);
+
+          const enumErrors = parseEnumErrors(stderr, session.decompDir);
+          const dupFiles = parseFailedFiles(stderr, session.decompDir);
+          let didFix = false;
+
+          if (enumErrors.length > 0 && attempts < maxAttempts) {
+            session.progress = `Fixing ${enumErrors.length} enum error(s)...`;
+            const fixed = await fixEnumErrors(enumErrors);
+            logger.info(`Fixed ${fixed} enum errors from build output`);
+            didFix = fixed > 0;
+          }
+
+          if (dupFiles.length > 0 && attempts < maxAttempts) {
+            session.progress = `Fixing ${dupFiles.length} file(s) with duplicate attributes...`;
+            await fixDuplicateAttributes(session.decompDir, dupFiles);
+            didFix = true;
+          }
+
+          if (!didFix || attempts >= maxAttempts) {
+            buildErrors.push(`[${strategy.label}] ${fullError.slice(0, 500)}`);
             break;
-          } catch (retryErr: unknown) {
-            const retryStderr = (retryErr as { stderr?: string }).stderr || "";
-            const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-            logger.error(`Retry build with ${strategy.label} also failed: ${(retryStderr || retryMsg).slice(0, 2000)}`);
-            buildErrors.push(`[${strategy.label} retry] ${(retryStderr || retryMsg).slice(0, 500)}`);
           }
         }
       }
+      if (built) break;
     }
 
     if (!built) {
