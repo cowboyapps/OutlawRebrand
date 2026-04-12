@@ -1065,71 +1065,105 @@ function parseResourceErrors(stderr: string, decompDir: string): EnumErrorInfo[]
   return errors;
 }
 
-async function fixEnumErrors(errors: EnumErrorInfo[]): Promise<number> {
-  const fileGroups = new Map<string, number[]>();
-  for (const err of errors) {
-    const lines = fileGroups.get(err.file) || [];
-    lines.push(err.line);
-    fileGroups.set(err.file, lines);
-  }
-
+async function fixErrorsInFiles(errors: EnumErrorInfo[]): Promise<number> {
+  const fileSet = new Set(errors.map(e => e.file));
   let fixed = 0;
-  for (const [filePath, errorLines] of fileGroups) {
+
+  for (const filePath of fileSet) {
     try {
       const content = await fs.readFile(filePath, "utf-8");
-      const lines = content.split("\n");
-      const errorLineSet = new Set(errorLines);
+      let newContent = content;
 
-      const fixedLines = lines.map((line, idx) => {
-        const lineNum = idx + 1;
-        if (!errorLineSet.has(lineNum)) return line;
+      newContent = newContent.replace(
+        /(android:\w+)\s*=\s*"(-?\d+)"/g,
+        (match, attr, val) => {
+          const layoutAttrs = ["android:layout_width", "android:layout_height"];
+          if (layoutAttrs.includes(attr)) {
+            if (val === "-1") { fixed++; return `${attr}="match_parent"`; }
+            if (val === "-2") { fixed++; return `${attr}="wrap_content"`; }
+            if (val === "0") { fixed++; return `${attr}="0dp"`; }
+          }
+          if (parseInt(val) < 0) {
+            if (val === "-1") { fixed++; return `${attr}="match_parent"`; }
+            if (val === "-2") { fixed++; return `${attr}="wrap_content"`; }
+            fixed++;
+            return "";
+          }
+          return match;
+        }
+      );
 
-        let fixedLine = "";
-        logger.info(`Removing error line ${lineNum} from ${filePath}: ${line.trim().slice(0, 100)}`);
+      newContent = newContent.replace(
+        /[ \t]*<item\s+name="[^"]*"[^>]*>\s*-?\d+\s*<\/item>\s*\n?/g,
+        () => { fixed++; return ""; }
+      );
 
-        if (fixedLine !== line) fixed++;
-        return fixedLine;
-      });
-
-      const newContent = fixedLines.join("\n");
       if (newContent !== content) {
         await fs.writeFile(filePath, newContent, "utf-8");
-        logger.info(`Fixed enum errors in ${filePath} (lines: ${errorLines.join(",")})`);
+        logger.info(`Fixed resource errors in ${filePath}`);
       }
     } catch (err) {
-      logger.warn(`Could not fix enum errors in ${filePath}: ${err}`);
+      logger.warn(`Could not fix errors in ${filePath}: ${err}`);
     }
   }
   return fixed;
 }
 
-async function fixAllResourceIssuesInValues(decompDir: string): Promise<number> {
+async function fixAllResourceIssues(decompDir: string): Promise<number> {
   let fixed = 0;
 
-  async function fixFile(filePath: string): Promise<void> {
+  async function fixValuesFile(filePath: string): Promise<void> {
     try {
       const content = await fs.readFile(filePath, "utf-8");
       let newContent = content;
 
       newContent = newContent.replace(
         /[ \t]*<item\s+name="[^"]*"[^>]*>\s*-?\d+\s*<\/item>\s*\n?/g,
-        () => {
-          fixed++;
-          return "";
-        }
+        () => { fixed++; return ""; }
       );
-
       newContent = newContent.replace(
         /[ \t]*<item\s+name="[^"]*"[^>]*>\s*(?:match_parent|wrap_content|fill_parent)\s*<\/item>\s*\n?/g,
-        () => {
-          fixed++;
-          return "";
+        () => { fixed++; return ""; }
+      );
+
+      if (newContent !== content) {
+        await fs.writeFile(filePath, newContent, "utf-8");
+        logger.info(`Fixed values in ${path.relative(decompDir, filePath)}`);
+      }
+    } catch {}
+  }
+
+  async function fixLayoutFile(filePath: string): Promise<void> {
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      let newContent = content;
+
+      const layoutAttrs = ["android:layout_width", "android:layout_height"];
+      newContent = newContent.replace(
+        /(android:\w+)\s*=\s*"(-?\d+)"/g,
+        (match, attr, val) => {
+          if (layoutAttrs.includes(attr)) {
+            if (val === "-1") { fixed++; return `${attr}="match_parent"`; }
+            if (val === "-2") { fixed++; return `${attr}="wrap_content"`; }
+            if (val === "0") { fixed++; return `${attr}="0dp"`; }
+          }
+          const dimAttrs = [
+            "android:rowHeight", "android:columnWidth", "android:minWidth", "android:minHeight",
+            "android:maxWidth", "android:maxHeight", "android:dropDownWidth", "android:dropDownHeight",
+            "android:width", "android:height",
+          ];
+          if (dimAttrs.includes(attr)) {
+            if (val === "-1") { fixed++; return `${attr}="match_parent"`; }
+            if (val === "-2") { fixed++; return `${attr}="wrap_content"`; }
+            if (parseInt(val) < 0) { fixed++; return ""; }
+          }
+          return match;
         }
       );
 
       if (newContent !== content) {
         await fs.writeFile(filePath, newContent, "utf-8");
-        logger.info(`Pre-fixed ${fixed} resource values in ${path.relative(decompDir, filePath)}`);
+        logger.info(`Fixed layout attrs in ${path.relative(decompDir, filePath)}`);
       }
     } catch {}
   }
@@ -1138,17 +1172,20 @@ async function fixAllResourceIssuesInValues(decompDir: string): Promise<number> 
   try {
     const resDirs = await fs.readdir(resDir, { withFileTypes: true });
     for (const d of resDirs) {
-      if (d.isDirectory() && d.name.startsWith("values")) {
-        const valDir = path.join(resDir, d.name);
-        try {
-          const files = await fs.readdir(valDir);
-          for (const f of files) {
-            if (f.endsWith(".xml")) {
-              await fixFile(path.join(valDir, f));
-            }
+      if (!d.isDirectory()) continue;
+      const subDir = path.join(resDir, d.name);
+      try {
+        const files = await fs.readdir(subDir);
+        for (const f of files) {
+          if (!f.endsWith(".xml")) continue;
+          const fp = path.join(subDir, f);
+          if (d.name.startsWith("values")) {
+            await fixValuesFile(fp);
+          } else if (d.name.startsWith("layout") || d.name.startsWith("xml")) {
+            await fixLayoutFile(fp);
           }
-        } catch {}
-      }
+        }
+      } catch {}
     }
   } catch {}
   return fixed;
@@ -1283,9 +1320,9 @@ async function recompileApk(session: Session): Promise<void> {
     }
 
     session.progress = "Fixing resource issues...";
-    const enumFixCount = await fixAllResourceIssuesInValues(session.decompDir);
+    const enumFixCount = await fixAllResourceIssues(session.decompDir);
     if (enumFixCount > 0) {
-      logger.info(`Pre-fixed ${enumFixCount} resource issues in values XML files`);
+      logger.info(`Pre-fixed ${enumFixCount} resource issues in XML files`);
     }
 
     session.progress = "Recompiling APK with apktool...";
@@ -1317,7 +1354,7 @@ async function recompileApk(session: Session): Promise<void> {
 
         if (resErrors.length > 0) {
           session.progress = `Fixing ${resErrors.length} resource error(s) and retrying...`;
-          const fixed = await fixEnumErrors(resErrors);
+          const fixed = await fixErrorsInFiles(resErrors);
           logger.info(`Fixed ${fixed} resource errors, retrying ${strategy.label}...`);
           try {
             await tryApktoolBuild(strategy.args);
