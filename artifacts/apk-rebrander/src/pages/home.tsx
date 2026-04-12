@@ -164,32 +164,53 @@ function StepUpload({ sessionId, setSessionId, status, error }: { sessionId: str
     const formData = new FormData();
     formData.append("apk", file);
 
-    try {
-      const res = await fetch("/api/apk/upload", {
-        method: "POST",
-        body: formData
-      });
-      
-      if (!res.ok) {
-        let detail = `Server returned ${res.status}`;
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/apk/upload");
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setProgress(Math.round((e.loaded / e.total) * 90));
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const errData = await res.json();
+          const data = JSON.parse(xhr.responseText);
+          setSessionId(data.sessionId);
+          setProgress(100);
+          toast({ title: "Upload successful", description: "Decompiling APK..." });
+        } catch {
+          toast({ title: "Upload error", description: "Invalid server response", variant: "destructive" });
+          setUploading(false);
+          setProgress(0);
+        }
+      } else {
+        let detail = `Server returned ${xhr.status}`;
+        try {
+          const errData = JSON.parse(xhr.responseText);
           if (errData.error) detail = errData.error;
         } catch {}
-        throw new Error(detail);
+        toast({ title: "Upload error", description: detail, variant: "destructive" });
+        setUploading(false);
+        setProgress(0);
       }
-      
-      const data = await res.json();
-      setSessionId(data.sessionId);
-      setProgress(100);
-      toast({ title: "Upload successful", description: "Decompiling APK..." });
-    } catch (err) {
-      console.error(err);
-      const msg = err instanceof Error ? err.message : "Failed to upload APK";
-      toast({ title: "Upload error", description: msg, variant: "destructive" });
+    };
+
+    xhr.onerror = () => {
+      toast({ title: "Upload error", description: "Network error — the file may be too large for the server. Try a smaller APK or check your connection.", variant: "destructive" });
       setUploading(false);
       setProgress(0);
-    }
+    };
+
+    xhr.ontimeout = () => {
+      toast({ title: "Upload error", description: "Upload timed out. Try a smaller file or a faster connection.", variant: "destructive" });
+      setUploading(false);
+      setProgress(0);
+    };
+
+    xhr.timeout = 600000;
+    xhr.send(formData);
   };
 
   return (

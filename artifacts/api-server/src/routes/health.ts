@@ -12,6 +12,10 @@ router.get("/healthz", (_req, res) => {
   res.json(data);
 });
 
+router.post("/healthz/post-test", (req, res) => {
+  res.json({ ok: true, contentType: req.headers["content-type"], contentLength: req.headers["content-length"] });
+});
+
 router.get("/healthz/tools", async (_req, res) => {
   const checks: Record<string, string> = {};
   for (const tool of ["apktool", "java", "keytool", "aapt2"]) {
