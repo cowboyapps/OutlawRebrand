@@ -147,6 +147,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/UrlUpdateResult"
 
+  /apk/{sessionId}/url/search:
+    post:
+      operationId: searchKeyword
+      tags: [apk]
+      summary: Search for a keyword across decompiled files
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeywordSearchBody"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeywordSearchResult"
+
+  /apk/{sessionId}/url/replace:
+    put:
+      operationId: batchReplace
+      tags: [apk]
+      summary: Batch replace occurrences across decompiled files
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchReplaceBody"
+      responses:
+        "200":
+          description: Replacements applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchReplaceResult"
+
   /apk/{sessionId}/images:
     get:
       operationId: listImages
@@ -374,6 +424,82 @@ components:
       required:
         - success
         - replacements
+
+    KeywordSearchBody:
+      type: object
+      properties:
+        keyword:
+          type: string
+      required:
+        - keyword
+
+    KeywordOccurrence:
+      type: object
+      properties:
+        file:
+          type: string
+        lineNumber:
+          type: integer
+        lineContent:
+          type: string
+        matchedText:
+          type: string
+      required:
+        - file
+        - lineNumber
+        - lineContent
+        - matchedText
+
+    KeywordSearchResult:
+      type: object
+      properties:
+        occurrences:
+          type: array
+          items:
+            $ref: "#/components/schemas/KeywordOccurrence"
+        total:
+          type: integer
+      required:
+        - occurrences
+        - total
+
+    BatchReplaceEntry:
+      type: object
+      properties:
+        file:
+          type: string
+        lineNumber:
+          type: integer
+        oldText:
+          type: string
+        newText:
+          type: string
+      required:
+        - file
+        - lineNumber
+        - oldText
+        - newText
+
+    BatchReplaceBody:
+      type: object
+      properties:
+        replacements:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchReplaceEntry"
+      required:
+        - replacements
+
+    BatchReplaceResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        applied:
+          type: integer
+      required:
+        - success
+        - applied
 
     ImageInfo:
       type: object

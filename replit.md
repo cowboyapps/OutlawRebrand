@@ -15,7 +15,7 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a full-stack w
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (server), Vite (frontend)
-- **APK Tools**: apktool 2.11.1, Java 17, zipalign, jarsigner (Nix)
+- **APK Tools**: apktool 2.11.1, Java 17 (Nix); signing via custom SignApk.java + Google apksig library (v1+v2+v3)
 
 ## Architecture
 
@@ -30,7 +30,8 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a full-stack w
 
 - Sessions stored in-memory (Map), work files in `/tmp/apk-rebrander/`
 - Keystore auto-generated at `/tmp/apk-rebrander/debug.keystore` (password: `rebrander123`)
-- APK signing uses jarsigner + zipalign (v1 signing)
+- APK signing uses custom `tools/SignApk.java` + `tools/apksigner.jar` (Google apksig 8.2.0) for v1+v2+v3 signing
+- Pre-build cleanup: removes APKTOOL_DUPLICATE files, smali_assets dirs (if original dex preserved), stray root dex files
 - `multer` handles file uploads: 500MB limit for APKs, 10MB for images
 
 ## Key Commands

@@ -7,12 +7,18 @@
  */
 
 export * from "./apkInfo";
+export * from "./batchReplaceBody";
+export * from "./batchReplaceEntry";
+export * from "./batchReplaceResult";
 export * from "./errorResponse";
 export * from "./getImageParams";
 export * from "./healthStatus";
 export * from "./imageInfo";
 export * from "./imageInfoType";
 export * from "./imageList";
+export * from "./keywordOccurrence";
+export * from "./keywordSearchBody";
+export * from "./keywordSearchResult";
 export * from "./replaceImageBody";
 export * from "./sessionInfo";
 export * from "./sessionStatus";

@@ -18,10 +18,14 @@ import type {
 
 import type {
   ApkInfo,
+  BatchReplaceBody,
+  BatchReplaceResult,
   ErrorResponse,
   GetImageParams,
   HealthStatus,
   ImageList,
+  KeywordSearchBody,
+  KeywordSearchResult,
   ReplaceImageBody,
   SessionInfo,
   SessionStatus,
@@ -554,6 +558,180 @@ export const useUpdatePanelUrl = <
   TContext
 > => {
   return useMutation(getUpdatePanelUrlMutationOptions(options));
+};
+
+/**
+ * @summary Search for a keyword across decompiled files
+ */
+export const getSearchKeywordUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/url/search`;
+};
+
+export const searchKeyword = async (
+  sessionId: string,
+  keywordSearchBody: KeywordSearchBody,
+  options?: RequestInit,
+): Promise<KeywordSearchResult> => {
+  return customFetch<KeywordSearchResult>(getSearchKeywordUrl(sessionId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(keywordSearchBody),
+  });
+};
+
+export const getSearchKeywordMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof searchKeyword>>,
+    TError,
+    { sessionId: string; data: BodyType<KeywordSearchBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof searchKeyword>>,
+  TError,
+  { sessionId: string; data: BodyType<KeywordSearchBody> },
+  TContext
+> => {
+  const mutationKey = ["searchKeyword"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof searchKeyword>>,
+    { sessionId: string; data: BodyType<KeywordSearchBody> }
+  > = (props) => {
+    const { sessionId, data } = props ?? {};
+
+    return searchKeyword(sessionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SearchKeywordMutationResult = NonNullable<
+  Awaited<ReturnType<typeof searchKeyword>>
+>;
+export type SearchKeywordMutationBody = BodyType<KeywordSearchBody>;
+export type SearchKeywordMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Search for a keyword across decompiled files
+ */
+export const useSearchKeyword = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof searchKeyword>>,
+    TError,
+    { sessionId: string; data: BodyType<KeywordSearchBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof searchKeyword>>,
+  TError,
+  { sessionId: string; data: BodyType<KeywordSearchBody> },
+  TContext
+> => {
+  return useMutation(getSearchKeywordMutationOptions(options));
+};
+
+/**
+ * @summary Batch replace occurrences across decompiled files
+ */
+export const getBatchReplaceUrl = (sessionId: string) => {
+  return `/api/apk/${sessionId}/url/replace`;
+};
+
+export const batchReplace = async (
+  sessionId: string,
+  batchReplaceBody: BatchReplaceBody,
+  options?: RequestInit,
+): Promise<BatchReplaceResult> => {
+  return customFetch<BatchReplaceResult>(getBatchReplaceUrl(sessionId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(batchReplaceBody),
+  });
+};
+
+export const getBatchReplaceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof batchReplace>>,
+    TError,
+    { sessionId: string; data: BodyType<BatchReplaceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof batchReplace>>,
+  TError,
+  { sessionId: string; data: BodyType<BatchReplaceBody> },
+  TContext
+> => {
+  const mutationKey = ["batchReplace"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof batchReplace>>,
+    { sessionId: string; data: BodyType<BatchReplaceBody> }
+  > = (props) => {
+    const { sessionId, data } = props ?? {};
+
+    return batchReplace(sessionId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BatchReplaceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof batchReplace>>
+>;
+export type BatchReplaceMutationBody = BodyType<BatchReplaceBody>;
+export type BatchReplaceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Batch replace occurrences across decompiled files
+ */
+export const useBatchReplace = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof batchReplace>>,
+    TError,
+    { sessionId: string; data: BodyType<BatchReplaceBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof batchReplace>>,
+  TError,
+  { sessionId: string; data: BodyType<BatchReplaceBody> },
+  TContext
+> => {
+  return useMutation(getBatchReplaceMutationOptions(options));
 };
 
 /**

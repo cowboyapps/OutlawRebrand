@@ -439,6 +439,143 @@ router.put("/apk/:sessionId/url", async (req: Request, res: Response) => {
   }
 });
 
+router.post("/apk/:sessionId/url/search", async (req: Request, res: Response) => {
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
+  if (!session) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+  if (session.status !== "ready") {
+    res.status(400).json({ error: "APK not ready for editing" });
+    return;
+  }
+
+  const { keyword } = req.body;
+  if (!keyword || typeof keyword !== "string" || keyword.trim().length === 0) {
+    res.status(400).json({ error: "keyword is required" });
+    return;
+  }
+
+  try {
+    const searchTerm = keyword.trim();
+    const occurrences: Array<{ file: string; lineNumber: number; lineContent: string; matchedText: string }> = [];
+    const MAX_RESULTS = 500;
+    const textExts = [".xml", ".smali", ".json", ".properties", ".txt", ".yml", ".yaml"];
+
+    async function searchDir(dir: string): Promise<void> {
+      if (occurrences.length >= MAX_RESULTS) return;
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (occurrences.length >= MAX_RESULTS) return;
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (!entry.name.startsWith(".") && entry.name !== "original" && entry.name !== "build") {
+              await searchDir(fullPath);
+            }
+          } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (textExts.includes(ext)) {
+              try {
+                const content = await fs.readFile(fullPath, "utf-8");
+                if (content.includes(searchTerm)) {
+                  const relativePath = path.relative(session!.decompDir, fullPath);
+                  const lines = content.split("\n");
+                  for (let i = 0; i < lines.length; i++) {
+                    if (occurrences.length >= MAX_RESULTS) break;
+                    const line = lines[i];
+                    let pos = line.indexOf(searchTerm);
+                    while (pos !== -1 && occurrences.length < MAX_RESULTS) {
+                      const contextStart = Math.max(0, pos - 60);
+                      const contextEnd = Math.min(line.length, pos + searchTerm.length + 60);
+                      const context = (contextStart > 0 ? "..." : "") + line.substring(contextStart, contextEnd) + (contextEnd < line.length ? "..." : "");
+                      occurrences.push({
+                        file: relativePath,
+                        lineNumber: i + 1,
+                        lineContent: context,
+                        matchedText: searchTerm,
+                      });
+                      pos = line.indexOf(searchTerm, pos + searchTerm.length);
+                    }
+                  }
+                }
+              } catch {
+                // skip unreadable files
+              }
+            }
+          }
+        }
+      } catch {
+        // skip inaccessible dirs
+      }
+    }
+
+    await searchDir(session.decompDir);
+    res.json({ occurrences, total: occurrences.length });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Search failed";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.put("/apk/:sessionId/url/replace", async (req: Request, res: Response) => {
+  const sessionId = String(req.params.sessionId);
+  const session = sessions.get(sessionId);
+  if (!session) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+  if (session.status !== "ready") {
+    res.status(400).json({ error: "APK not ready for editing" });
+    return;
+  }
+
+  const { replacements } = req.body;
+  if (!Array.isArray(replacements) || replacements.length === 0) {
+    res.status(400).json({ error: "replacements array is required" });
+    return;
+  }
+
+  try {
+    let applied = 0;
+    const fileEdits = new Map<string, Array<{ lineNumber: number; oldText: string; newText: string }>>();
+
+    for (const entry of replacements) {
+      if (!entry.file || !entry.oldText || !entry.newText || entry.oldText === entry.newText) continue;
+      const resolvedPath = path.resolve(session.decompDir, entry.file);
+      if (!resolvedPath.startsWith(session.decompDir + path.sep)) continue;
+      const existing = fileEdits.get(entry.file) || [];
+      existing.push({ lineNumber: entry.lineNumber, oldText: entry.oldText, newText: entry.newText });
+      fileEdits.set(entry.file, existing);
+    }
+
+    for (const [relFile, edits] of fileEdits) {
+      const fullPath = path.resolve(session.decompDir, relFile);
+      if (!fullPath.startsWith(session.decompDir + path.sep)) continue;
+      try {
+        const content = await fs.readFile(fullPath, "utf-8");
+        const lines = content.split("\n");
+        for (const edit of edits) {
+          const idx = edit.lineNumber - 1;
+          if (idx >= 0 && idx < lines.length && lines[idx].includes(edit.oldText)) {
+            lines[idx] = lines[idx].split(edit.oldText).join(edit.newText);
+            applied++;
+          }
+        }
+        await fs.writeFile(fullPath, lines.join("\n"));
+      } catch {
+        // skip inaccessible files
+      }
+    }
+
+    res.json({ success: true, applied });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Replacement failed";
+    res.status(500).json({ error: message });
+  }
+});
+
 router.get("/apk/:sessionId/images", async (req: Request, res: Response) => {
   const sessionId = String(req.params.sessionId);
   const session = sessions.get(sessionId);

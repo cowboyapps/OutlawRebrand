@@ -66,6 +66,38 @@ export interface UrlUpdateResult {
   replacements: number;
 }
 
+export interface KeywordSearchBody {
+  keyword: string;
+}
+
+export interface KeywordOccurrence {
+  file: string;
+  lineNumber: number;
+  lineContent: string;
+  matchedText: string;
+}
+
+export interface KeywordSearchResult {
+  occurrences: KeywordOccurrence[];
+  total: number;
+}
+
+export interface BatchReplaceEntry {
+  file: string;
+  lineNumber: number;
+  oldText: string;
+  newText: string;
+}
+
+export interface BatchReplaceBody {
+  replacements: BatchReplaceEntry[];
+}
+
+export interface BatchReplaceResult {
+  success: boolean;
+  applied: number;
+}
+
 export type ImageInfoType = (typeof ImageInfoType)[keyof typeof ImageInfoType];
 
 export const ImageInfoType = {

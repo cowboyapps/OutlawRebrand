@@ -100,6 +100,52 @@ export const UpdatePanelUrlResponse = zod.object({
 });
 
 /**
+ * @summary Search for a keyword across decompiled files
+ */
+export const SearchKeywordParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const SearchKeywordBody = zod.object({
+  keyword: zod.string(),
+});
+
+export const SearchKeywordResponse = zod.object({
+  occurrences: zod.array(
+    zod.object({
+      file: zod.string(),
+      lineNumber: zod.number(),
+      lineContent: zod.string(),
+      matchedText: zod.string(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * @summary Batch replace occurrences across decompiled files
+ */
+export const BatchReplaceParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const BatchReplaceBody = zod.object({
+  replacements: zod.array(
+    zod.object({
+      file: zod.string(),
+      lineNumber: zod.number(),
+      oldText: zod.string(),
+      newText: zod.string(),
+    }),
+  ),
+});
+
+export const BatchReplaceResponse = zod.object({
+  success: zod.boolean(),
+  applied: zod.number(),
+});
+
+/**
  * @summary List all images in the APK
  */
 export const ListImagesParams = zod.object({

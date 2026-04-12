@@ -16,10 +16,12 @@ import {
   getGetApkInfoQueryKey,
   useUpdateAppName,
   useUpdatePanelUrl,
+  useSearchKeyword,
+  useBatchReplace,
   useListImages,
   getListImagesQueryKey
 } from "@workspace/api-client-react";
-import type { ImageInfo, SessionStatus } from "@workspace/api-client-react";
+import type { ImageInfo, SessionStatus, KeywordOccurrence } from "@workspace/api-client-react";
 
 const STEPS = [
   { id: 1, name: "Upload APK", icon: FileArchive },
@@ -245,12 +247,18 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
   });
   
   const updateAppName = useUpdateAppName();
-  const updatePanelUrl = useUpdatePanelUrl();
+  const searchKeyword = useSearchKeyword();
+  const batchReplace = useBatchReplace();
 
   const [name, setName] = useState("");
-  const [oldUrl, setOldUrl] = useState("");
-  const [newUrl, setNewUrl] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [occurrences, setOccurrences] = useState<KeywordOccurrence[]>([]);
+  const [replacements, setReplacements] = useState<Record<string, string>>({});
+  const [bulkValue, setBulkValue] = useState("");
+  const [hasSearched, setHasSearched] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [appliedCount, setAppliedCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (apkInfo) {
@@ -258,27 +266,86 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
     }
   }, [apkInfo]);
 
-  const handleSave = async () => {
+  const occKey = (occ: KeywordOccurrence) => `${occ.file}:${occ.lineNumber}`;
+
+  const handleSearch = async () => {
+    if (!keyword.trim()) return;
+    setIsSearching(true);
+    setAppliedCount(null);
+    try {
+      const result = await searchKeyword.mutateAsync({ sessionId, data: { keyword: keyword.trim() } });
+      setOccurrences(result.occurrences || []);
+      setHasSearched(true);
+      setReplacements({});
+      setBulkValue("");
+    } catch {
+      toast({ title: "Error", description: "Search failed", variant: "destructive" });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleBulkSet = () => {
+    if (!bulkValue) return;
+    const newReplacements: Record<string, string> = {};
+    for (const occ of occurrences) {
+      newReplacements[occKey(occ)] = bulkValue;
+    }
+    setReplacements(newReplacements);
+  };
+
+  const handleApplyReplacements = async () => {
+    const entries = occurrences
+      .filter(occ => {
+        const newText = replacements[occKey(occ)];
+        return newText && newText !== occ.matchedText;
+      })
+      .map(occ => ({
+        file: occ.file,
+        lineNumber: occ.lineNumber,
+        oldText: occ.matchedText,
+        newText: replacements[occKey(occ)],
+      }));
+    if (entries.length === 0) {
+      toast({ title: "Nothing to replace", description: "Enter replacement values first." });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const result = await batchReplace.mutateAsync({ sessionId, data: { replacements: entries } });
+      setAppliedCount(result.applied);
+      toast({ title: "Replacements applied", description: `${result.applied} occurrence(s) updated.` });
+      setOccurrences([]);
+      setReplacements({});
+      setHasSearched(false);
+      setKeyword("");
+    } catch {
+      toast({ title: "Error", description: "Failed to apply replacements", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveAndContinue = async () => {
     if (!name || !apkInfo) return;
-    
     setIsSaving(true);
     try {
       if (name !== apkInfo.appName) {
         await updateAppName.mutateAsync({ sessionId, data: { newName: name } });
       }
-      
-      if (oldUrl && newUrl && oldUrl !== newUrl) {
-        await updatePanelUrl.mutateAsync({ sessionId, data: { oldUrl, newUrl } });
-      }
-      
       toast({ title: "Configuration saved", description: "App details updated successfully." });
       onNext();
-    } catch (err) {
+    } catch {
       toast({ title: "Error", description: "Failed to update configuration", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
   };
+
+  const grouped = occurrences.reduce<Record<string, KeywordOccurrence[]>>((acc, occ) => {
+    (acc[occ.file] = acc[occ.file] || []).push(occ);
+    return acc;
+  }, {});
 
   if (isLoading || !apkInfo) {
     return (
@@ -294,7 +361,7 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
     <Card>
       <CardHeader>
         <CardTitle>Application Details</CardTitle>
-        <CardDescription>Configure the app name and replace the panel URL.</CardDescription>
+        <CardDescription>Configure the app name and search for keywords to replace across all decompiled files.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid gap-4">
@@ -315,35 +382,105 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
         </div>
 
         <div className="space-y-4 pt-4 border-t border-border">
-          <h3 className="text-lg font-medium">Panel URL Replacement</h3>
-          <p className="text-sm text-muted-foreground">Enter the existing panel URL to search for in the app, then enter the new URL to replace it with.</p>
+          <h3 className="text-lg font-medium">Keyword Search & Replace</h3>
+          <p className="text-sm text-muted-foreground">Search for a keyword (domain, URL, text) across all decompiled files. Each occurrence can be replaced individually.</p>
           
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="oldUrl">URL to Search For</Label>
-              <Input 
-                id="oldUrl" 
-                placeholder="http://old-panel.com:8080" 
-                value={oldUrl} 
-                onChange={e => setOldUrl(e.target.value)} 
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="newUrl">Replacement URL</Label>
-              <Input 
-                id="newUrl" 
-                placeholder="http://your-new-panel.com:8080" 
-                value={newUrl} 
-                onChange={e => setNewUrl(e.target.value)} 
-              />
-            </div>
+          <div className="flex gap-2">
+            <Input 
+              placeholder="e.g. oldpanel.com" 
+              value={keyword} 
+              onChange={e => setKeyword(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSearch()}
+            />
+            <Button onClick={handleSearch} disabled={isSearching || !keyword.trim()}>
+              {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              <span className="ml-2">Search</span>
+            </Button>
           </div>
+
+          {appliedCount !== null && !hasSearched && (
+            <Alert>
+              <Check className="h-4 w-4" />
+              <AlertTitle>Replacements Applied</AlertTitle>
+              <AlertDescription>{appliedCount} occurrence(s) were updated. You can search again or continue to the next step.</AlertDescription>
+            </Alert>
+          )}
+
+          {hasSearched && occurrences.length === 0 && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>No Results</AlertTitle>
+              <AlertDescription>No occurrences of "{keyword}" were found in the decompiled files.</AlertDescription>
+            </Alert>
+          )}
+
+          {occurrences.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">{occurrences.length} occurrence(s) found across {Object.keys(grouped).length} file(s)</p>
+              </div>
+
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Label htmlFor="bulkReplace" className="text-xs text-muted-foreground">Set all replacements to:</Label>
+                  <Input 
+                    id="bulkReplace"
+                    placeholder="e.g. newpanel.com"
+                    value={bulkValue}
+                    onChange={e => setBulkValue(e.target.value)}
+                  />
+                </div>
+                <Button variant="secondary" onClick={handleBulkSet} disabled={!bulkValue}>Apply to All</Button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto space-y-4 border rounded-md p-3">
+                {Object.entries(grouped).map(([file, occs]) => (
+                  <div key={file} className="space-y-2">
+                    <p className="text-xs font-mono text-muted-foreground bg-muted px-2 py-1 rounded break-all">{file}</p>
+                    {occs.map(occ => {
+                      const key = occKey(occ);
+                      const parts = occ.lineContent.split(occ.matchedText);
+                      return (
+                        <div key={key} className="ml-2 space-y-1 pb-2 border-b border-border last:border-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground shrink-0">Line {occ.lineNumber}:</span>
+                            <p className="text-xs font-mono truncate max-w-full">
+                              {parts.map((part, i) => (
+                                <span key={i}>
+                                  {part}
+                                  {i < parts.length - 1 && <mark className="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">{occ.matchedText}</mark>}
+                                </span>
+                              ))}
+                            </p>
+                          </div>
+                          <Input
+                            className="h-8 text-sm font-mono"
+                            placeholder="Replacement text..."
+                            value={replacements[key] ?? ""}
+                            onChange={e => setReplacements(prev => ({ ...prev, [key]: e.target.value }))}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+
+              <Button 
+                onClick={handleApplyReplacements} 
+                disabled={isSaving || Object.values(replacements).every(v => !v)}
+                className="w-full"
+              >
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Apply Replacements
+              </Button>
+            </div>
+          )}
         </div>
       </CardContent>
       <CardFooter className="flex justify-between">
         <Button variant="outline" onClick={onBack}>Back</Button>
-        <Button onClick={handleSave} disabled={isSaving}>
+        <Button onClick={handleSaveAndContinue} disabled={isSaving}>
           {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Save & Continue"}
           <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
