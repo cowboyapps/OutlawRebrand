@@ -1074,28 +1074,16 @@ async function fixErrorsInFiles(errors: EnumErrorInfo[]): Promise<number> {
       const content = await fs.readFile(filePath, "utf-8");
       let newContent = content;
 
-      const layoutNames = ["layout_width", "layout_height"];
-      const dimNames = [
-        "rowHeight", "columnWidth", "minWidth", "minHeight",
-        "maxWidth", "maxHeight", "dropDownWidth", "dropDownHeight",
-        "width", "height",
-      ];
       newContent = newContent.replace(
-        /([\w]+:(\w+))\s*=\s*"(-?\d+)"/g,
+        /\s*([\w]+:(\w+))\s*=\s*"(-?\d+)"/g,
         (match, fullAttr, attrName, val) => {
+          const layoutNames = ["layout_width", "layout_height"];
           if (layoutNames.includes(attrName)) {
-            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
-            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
-            if (val === "0") { fixed++; return `${fullAttr}="0dp"`; }
-          }
-          if (dimNames.includes(attrName)) {
-            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
-            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
-            if (parseInt(val) < 0) { fixed++; return ""; }
+            if (val === "-1") { fixed++; return ` ${fullAttr}="match_parent"`; }
+            if (val === "-2") { fixed++; return ` ${fullAttr}="wrap_content"`; }
+            if (val === "0") { fixed++; return ` ${fullAttr}="0dp"`; }
           }
           if (parseInt(val) < 0) {
-            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
-            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
             fixed++;
             return "";
           }
@@ -1149,23 +1137,21 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
       let newContent = content;
 
       const layoutNames = ["layout_width", "layout_height"];
-      const dimNames = [
+      const strictDimNames = [
         "rowHeight", "columnWidth", "minWidth", "minHeight",
         "maxWidth", "maxHeight", "dropDownWidth", "dropDownHeight",
-        "width", "height",
       ];
       newContent = newContent.replace(
-        /([\w]+:(\w+))\s*=\s*"(-?\d+)"/g,
+        /\s*([\w]+:(\w+))\s*=\s*"(-?\d+)"/g,
         (match, fullAttr, attrName, val) => {
           if (layoutNames.includes(attrName)) {
-            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
-            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
-            if (val === "0") { fixed++; return `${fullAttr}="0dp"`; }
+            if (val === "-1") { fixed++; return ` ${fullAttr}="match_parent"`; }
+            if (val === "-2") { fixed++; return ` ${fullAttr}="wrap_content"`; }
+            if (val === "0") { fixed++; return ` ${fullAttr}="0dp"`; }
           }
-          if (dimNames.includes(attrName)) {
-            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
-            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
-            if (parseInt(val) < 0) { fixed++; return ""; }
+          if (strictDimNames.includes(attrName)) {
+            fixed++;
+            return "";
           }
           return match;
         }
