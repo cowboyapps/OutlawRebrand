@@ -844,7 +844,7 @@ async function recompileApk(session: Session): Promise<void> {
       ], { timeout: 30000 });
     }
 
-    session.progress = "Signing APK (v1+v2)...";
+    session.progress = "Signing APK (v1+v2+v3)...";
     const toolsDir = "/home/runner/workspace/tools";
     const apksigJar = path.join(toolsDir, "apksigner.jar");
     const signApkClass = toolsDir;

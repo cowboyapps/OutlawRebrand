@@ -53,9 +53,9 @@ public class SignApk {
             .setOutputApk(new File(outputApk))
             .setV1SigningEnabled(true)
             .setV2SigningEnabled(true)
-            .setV3SigningEnabled(false);
+            .setV3SigningEnabled(true);
 
         builder.build().sign();
-        System.out.println("APK signed successfully with v1+v2");
+        System.out.println("APK signed successfully with v1+v2+v3");
     }
 }
