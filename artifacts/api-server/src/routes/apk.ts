@@ -1075,15 +1075,19 @@ async function fixErrorsInFiles(errors: EnumErrorInfo[]): Promise<number> {
       let newContent = content;
 
       newContent = newContent.replace(
-        /\s*([\w]+:(\w+))\s*=\s*"(-?\d+)"/g,
+        /\s*([\w]+:(\w+))\s*=\s*"([^"]*)"/g,
         (match, fullAttr, attrName, val) => {
+          if (/^APKTOOL_MISSING_/.test(val) || /^APKTOOL_DUMMY_/.test(val)) {
+            fixed++;
+            return "";
+          }
           const layoutNames = ["layout_width", "layout_height"];
           if (layoutNames.includes(attrName)) {
             if (val === "-1") { fixed++; return ` ${fullAttr}="match_parent"`; }
             if (val === "-2") { fixed++; return ` ${fullAttr}="wrap_content"`; }
             if (val === "0") { fixed++; return ` ${fullAttr}="0dp"`; }
           }
-          if (parseInt(val) < 0) {
+          if (/^-?\d+$/.test(val) && parseInt(val) < 0) {
             fixed++;
             return "";
           }
@@ -1131,7 +1135,7 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
     } catch {}
   }
 
-  async function fixLayoutFile(filePath: string): Promise<void> {
+  async function fixXmlFile(filePath: string): Promise<void> {
     try {
       const content = await fs.readFile(filePath, "utf-8");
       let newContent = content;
@@ -1144,6 +1148,10 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
       newContent = newContent.replace(
         /\s*([\w]+:(\w+))\s*=\s*"([^"]*)"/g,
         (match, fullAttr, attrName, val) => {
+          if (/^APKTOOL_MISSING_/.test(val) || /^APKTOOL_DUMMY_/.test(val)) {
+            fixed++;
+            return "";
+          }
           if (strictDimNames.includes(attrName)) {
             if (val === "wrap_content" || val === "match_parent" || val === "fill_parent" || /^-?\d+$/.test(val)) {
               fixed++;
@@ -1161,7 +1169,7 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
 
       if (newContent !== content) {
         await fs.writeFile(filePath, newContent, "utf-8");
-        logger.info(`Fixed layout attrs in ${path.relative(decompDir, filePath)}`);
+        logger.info(`Fixed XML attrs in ${path.relative(decompDir, filePath)}`);
       }
     } catch {}
   }
@@ -1179,9 +1187,8 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
           const fp = path.join(subDir, f);
           if (d.name.startsWith("values")) {
             await fixValuesFile(fp);
-          } else if (d.name.startsWith("layout") || d.name.startsWith("xml")) {
-            await fixLayoutFile(fp);
           }
+          await fixXmlFile(fp);
         }
       } catch {}
     }
