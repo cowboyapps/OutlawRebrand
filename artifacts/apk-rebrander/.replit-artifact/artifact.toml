@@ -18,13 +18,6 @@ localPort = 8080
 run = "echo 'Frontend served via API server on port 8080'"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/apk-rebrander", "run", "build" ]
-publicDir = "artifacts/apk-rebrander/dist/public"
-serve = "static"
-
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
 
 [services.env]
 PORT = "8080"
