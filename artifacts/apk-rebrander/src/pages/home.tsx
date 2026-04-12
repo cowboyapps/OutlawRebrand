@@ -64,21 +64,21 @@ export default function Home() {
   }, [status, currentStep]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-background text-foreground py-6 sm:py-12 px-3 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
-        <div className="mb-10 text-center">
-          <h1 className="text-4xl font-extrabold tracking-tight">APK Rebrander</h1>
-          <p className="mt-2 text-lg text-muted-foreground">Decompile, rebrand, and rebuild your panel applications.</p>
+        <div className="mb-6 sm:mb-10 text-center">
+          <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">APK Rebrander</h1>
+          <p className="mt-1 sm:mt-2 text-sm sm:text-lg text-muted-foreground">Decompile, rebrand, and rebuild your panel applications.</p>
         </div>
 
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <nav aria-label="Progress">
-            <ol role="list" className="flex items-center">
+            <ol role="list" className="flex items-center justify-between">
               {STEPS.map((step, stepIdx) => (
-                <li key={step.name} className={`relative pr-8 sm:pr-20 ${stepIdx !== STEPS.length - 1 ? '' : 'pr-0'}`}>
-                  <div className="flex items-center">
+                <li key={step.name} className="relative flex-1 flex flex-col items-center">
+                  <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
                     <div className={`
-                      flex h-8 w-8 items-center justify-center rounded-full 
+                      flex h-8 w-8 shrink-0 items-center justify-center rounded-full 
                       ${currentStep > step.id ? 'bg-primary text-primary-foreground' : 
                         currentStep === step.id ? 'border-2 border-primary bg-background text-primary' : 
                         'border-2 border-muted bg-background text-muted-foreground'}
@@ -89,13 +89,10 @@ export default function Home() {
                         <step.icon className="h-4 w-4" aria-hidden="true" />
                       )}
                     </div>
-                    <span className={`ml-4 text-sm font-medium ${currentStep >= step.id ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    <span className={`text-[11px] sm:text-sm font-medium text-center leading-tight ${currentStep >= step.id ? 'text-foreground' : 'text-muted-foreground'}`}>
                       {step.name}
                     </span>
                   </div>
-                  {stepIdx !== STEPS.length - 1 ? (
-                    <div className="absolute top-4 left-0 -ml-px mt-0.5 h-0.5 w-full bg-muted" aria-hidden="true" />
-                  ) : null}
                 </li>
               ))}
             </ol>
@@ -203,7 +200,7 @@ function StepUpload({ sessionId, setSessionId, status, error }: { sessionId: str
         )}
 
         <div 
-          className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-12 text-center hover:bg-muted/50 transition-colors cursor-pointer"
+          className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 sm:p-12 text-center hover:bg-muted/50 transition-colors cursor-pointer"
           onClick={() => !uploading && status !== "decompiling" && fileInputRef.current?.click()}
         >
           <input 
@@ -392,14 +389,15 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
           <h3 className="text-lg font-medium">Keyword Search & Replace</h3>
           <p className="text-sm text-muted-foreground">Search for a keyword (domain, URL, text) across all decompiled files. Each occurrence can be replaced individually.</p>
           
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Input 
               placeholder="e.g. oldpanel.com" 
               value={keyword} 
               onChange={e => setKeyword(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
+              className="flex-1"
             />
-            <Button onClick={handleSearch} disabled={isSearching || !keyword.trim()}>
+            <Button onClick={handleSearch} disabled={isSearching || !keyword.trim()} className="w-full sm:w-auto shrink-0">
               {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               <span className="ml-2">Search</span>
             </Button>
@@ -438,7 +436,7 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
                 <p className="text-sm font-medium">{occurrences.length} occurrence(s) found across {Object.keys(grouped).length} file(s)</p>
               </div>
 
-              <div className="flex gap-2 items-end">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                 <div className="flex-1">
                   <Label htmlFor="bulkReplace" className="text-xs text-muted-foreground">Set all replacements to:</Label>
                   <Input 
@@ -448,7 +446,7 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
                     onChange={e => setBulkValue(e.target.value)}
                   />
                 </div>
-                <Button variant="secondary" onClick={handleBulkSet} disabled={!bulkValue}>Apply to All</Button>
+                <Button variant="secondary" onClick={handleBulkSet} disabled={!bulkValue} className="w-full sm:w-auto shrink-0">Apply to All</Button>
               </div>
 
               <div className="max-h-96 overflow-y-auto space-y-4 border rounded-md p-3">
@@ -461,10 +459,10 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
                       const before = matchIdx >= 0 ? occ.lineContent.substring(0, matchIdx) : occ.lineContent;
                       const after = matchIdx >= 0 ? occ.lineContent.substring(matchIdx + occ.matchedText.length) : "";
                       return (
-                        <div key={key} className="ml-2 space-y-1 pb-2 border-b border-border last:border-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground shrink-0">L{occ.lineNumber}:C{occ.columnStart}:</span>
-                            <p className="text-xs font-mono truncate max-w-full">
+                        <div key={key} className="ml-0 sm:ml-2 space-y-1 pb-2 border-b border-border last:border-0">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
+                            <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0">L{occ.lineNumber}:C{occ.columnStart}</span>
+                            <p className="text-[10px] sm:text-xs font-mono break-all sm:truncate max-w-full overflow-hidden">
                               {before}
                               {matchIdx >= 0 && <mark className="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">{occ.matchedText}</mark>}
                               {after}
@@ -520,12 +518,14 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   const [roundForReplace, setRoundForReplace] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [hideXml, setHideXml] = useState(false);
   const [imgCacheBust, setImgCacheBust] = useState(Date.now());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [xmlPreview, setXmlPreview] = useState<{ path: string; content: string } | null>(null);
 
   const filteredImages = imageList?.images?.filter((img: ImageInfo) => {
+    if (hideXml && img.type === "xml") return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return img.name.toLowerCase().includes(q) || 
@@ -630,8 +630,8 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
           onChange={handleFileChange} 
         />
 
-        <div className="mb-4">
-          <div className="relative">
+        <div className="mb-4 flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search images by name, path, or folder..."
@@ -640,28 +640,36 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
               className="pl-9"
             />
           </div>
+          <Button
+            variant={hideXml ? "default" : "outline"}
+            size="sm"
+            onClick={() => setHideXml(!hideXml)}
+            className="shrink-0 h-9"
+          >
+            {hideXml ? "Show XML" : "Hide XML"}
+          </Button>
         </div>
 
-        {searchQuery && (
+        {(searchQuery || hideXml) && (
           <div className="text-sm text-muted-foreground mb-3">
             Showing {filteredImages?.length || 0} of {imageList?.images?.length || 0} images
           </div>
         )}
         
         {xmlPreview && (
-          <div className="mb-4 rounded-md border border-border bg-muted/30 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">XML Preview: {xmlPreview.path}</span>
-              <div className="flex gap-2">
+          <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between mb-2">
+              <span className="text-xs sm:text-sm font-medium break-all">XML Preview: {xmlPreview.path}</span>
+              <div className="flex gap-2 shrink-0">
                 <Button size="sm" variant="outline" onClick={() => handleXmlReplace(xmlPreview.path)}>Replace XML</Button>
                 <Button size="sm" variant="ghost" onClick={() => setXmlPreview(null)}>Close</Button>
               </div>
             </div>
-            <pre className="text-xs font-mono bg-background rounded p-3 overflow-auto max-h-64 border border-border">{xmlPreview.content}</pre>
+            <pre className="text-[10px] sm:text-xs font-mono bg-background rounded p-2 sm:p-3 overflow-auto max-h-48 sm:max-h-64 border border-border">{xmlPreview.content}</pre>
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">
           {filteredImages?.map((img: ImageInfo) => {
             const isXml = img.type === "xml";
             const isActive = xmlPreview?.path === img.path;
@@ -673,7 +681,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                 className={`relative group rounded-md border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col ${isActive || isSelected ? "border-primary ring-2 ring-primary/20" : "border-border"}`}
                 onClick={() => handleImageClick(img.path, isXml)}
               >
-                <div className="h-32 flex items-center justify-center p-4">
+                <div className="h-24 sm:h-32 flex items-center justify-center p-2 sm:p-4">
                   {isXml ? (
                     <div className="text-muted-foreground flex flex-col items-center">
                       <ImageIcon className="h-8 w-8 opacity-50 mb-2" />
@@ -688,11 +696,11 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                     />
                   )}
                 </div>
-                <div className="p-2 text-xs bg-background/90 backdrop-blur border-t border-border mt-auto">
+                <div className="p-1.5 sm:p-2 text-[10px] sm:text-xs bg-background/90 backdrop-blur border-t border-border mt-auto">
                   <div className="font-medium truncate" title={img.name}>{img.name}</div>
                   <div className="text-muted-foreground truncate" title={img.directory}>{img.directory}</div>
                   {img.width && img.height && (
-                    <div className="text-muted-foreground">{img.width} x {img.height}px</div>
+                    <div className="text-muted-foreground">{img.width}x{img.height}</div>
                   )}
                 </div>
                 
