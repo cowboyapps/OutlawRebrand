@@ -358,6 +358,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   const [roundForReplace, setRoundForReplace] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [imgCacheBust, setImgCacheBust] = useState(Date.now());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [xmlPreview, setXmlPreview] = useState<{ path: string; content: string } | null>(null);
@@ -429,6 +430,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
       
       const desc = roundForReplace ? "Image replaced, resized, and made round." : "Image replaced and auto-resized to fit.";
       toast({ title: "Success", description: desc });
+      setImgCacheBust(Date.now());
       queryClient.invalidateQueries({ queryKey: getListImagesQueryKey(sessionId) });
       setXmlPreview(null);
       setSelectedImage(null);
@@ -518,7 +520,7 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                     </div>
                   ) : (
                     <img 
-                      src={`/api/apk/${sessionId}/image?path=${encodeURIComponent(img.path)}`} 
+                      src={`/api/apk/${sessionId}/image?path=${encodeURIComponent(img.path)}&t=${imgCacheBust}`} 
                       alt={img.name}
                       className={`max-h-full max-w-full object-contain drop-shadow-md ${isRoundIcon ? "rounded-full" : ""}`}
                     />

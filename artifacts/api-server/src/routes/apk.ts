@@ -483,7 +483,7 @@ router.get("/apk/:sessionId/image", async (req: Request, res: Response) => {
 
   try {
     await fs.access(normalized);
-    const ext = path.extname(fullPath).toLowerCase();
+    const ext = path.extname(normalized).toLowerCase();
     const mimeTypes: Record<string, string> = {
       ".png": "image/png",
       ".jpg": "image/jpeg",
@@ -492,7 +492,8 @@ router.get("/apk/:sessionId/image", async (req: Request, res: Response) => {
       ".xml": "text/xml",
     };
     res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
-    const data = await fs.readFile(fullPath);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    const data = await fs.readFile(normalized);
     res.send(data);
   } catch {
     res.status(404).json({ error: "Image not found" });
