@@ -273,15 +273,19 @@ router.post("/apk/upload", upload.single("apk"), async (req: Request, res: Respo
 async function decompileApk(session: Session): Promise<void> {
   session.progress = "Decompiling APK...";
   try {
-    await execFileAsync("apktool", ["d", "-f", "-o", session.decompDir, session.apkPath], {
+    const apktoolCmd = await getApktoolPath();
+    await execFileAsync(apktoolCmd, ["d", "-f", "-o", session.decompDir, session.apkPath], {
       timeout: 300000,
       maxBuffer: 50 * 1024 * 1024,
     });
     session.status = "ready";
     session.progress = "Decompilation complete";
   } catch (err: unknown) {
+    const stderr = (err as { stderr?: string }).stderr || "";
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error(`Decompilation failed: ${(stderr || errMsg).slice(0, 2000)}`);
     session.status = "error";
-    session.error = err instanceof Error ? err.message : "Decompilation failed";
+    session.error = stderr ? stderr.slice(0, 500) : (err instanceof Error ? err.message : "Decompilation failed");
     throw err;
   }
 }
@@ -1109,8 +1113,35 @@ print('Removed: ' + ', '.join(stray))
   }
 }
 
+async function findApktool(): Promise<string> {
+  const candidates = ["apktool", "/nix/var/nix/profiles/default/bin/apktool"];
+  for (const cmd of candidates) {
+    try {
+      await execFileAsync("which", [cmd], { timeout: 5000 });
+      return cmd;
+    } catch {}
+  }
+  try {
+    const { stdout } = await execFileAsync("find", ["/nix", "-name", "apktool", "-type", "f"], { timeout: 10000 });
+    const found = stdout.trim().split("\n").filter(Boolean)[0];
+    if (found) return found;
+  } catch {}
+  return "apktool";
+}
+
+let cachedApktoolPath: string | null = null;
+
+async function getApktoolPath(): Promise<string> {
+  if (!cachedApktoolPath) {
+    cachedApktoolPath = await findApktool();
+    logger.info(`Using apktool at: ${cachedApktoolPath}`);
+  }
+  return cachedApktoolPath;
+}
+
 async function tryApktoolBuild(args: string[]): Promise<void> {
-  await execFileAsync("apktool", args, {
+  const apktoolCmd = await getApktoolPath();
+  await execFileAsync(apktoolCmd, args, {
     timeout: 300000,
     maxBuffer: 50 * 1024 * 1024,
   });
@@ -1141,14 +1172,21 @@ async function recompileApk(session: Session): Promise<void> {
     ];
 
     let built = false;
+    const buildErrors: string[] = [];
     for (const strategy of buildStrategies) {
       try {
         session.progress = `Recompiling APK (${strategy.label})...`;
+        logger.info(`Trying build strategy: ${strategy.label}, args: ${JSON.stringify(strategy.args)}`);
         await tryApktoolBuild(strategy.args);
         built = true;
+        logger.info(`Build succeeded with strategy: ${strategy.label}`);
         break;
       } catch (firstErr: unknown) {
-        const stderr = (firstErr as { stderr?: string }).stderr || String(firstErr);
+        const stderr = (firstErr as { stderr?: string }).stderr || "";
+        const errMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+        const fullError = stderr || errMsg;
+        logger.error(`Build with ${strategy.label} failed: ${fullError.slice(0, 2000)}`);
+        buildErrors.push(`[${strategy.label}] ${fullError.slice(0, 500)}`);
         const dupFiles = parseFailedFiles(stderr, session.decompDir);
         if (dupFiles.length > 0) {
           session.progress = `Fixing ${dupFiles.length} file(s) with duplicate attributes...`;
@@ -1157,18 +1195,22 @@ async function recompileApk(session: Session): Promise<void> {
             session.progress = `Retrying build (${strategy.label})...`;
             await tryApktoolBuild(strategy.args);
             built = true;
+            logger.info(`Build succeeded with strategy: ${strategy.label} (after fixing duplicates)`);
             break;
-          } catch {
-            logger.warn(`Build with ${strategy.label} failed after fixing duplicates, trying next strategy`);
+          } catch (retryErr: unknown) {
+            const retryStderr = (retryErr as { stderr?: string }).stderr || "";
+            const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+            logger.error(`Retry build with ${strategy.label} also failed: ${(retryStderr || retryMsg).slice(0, 2000)}`);
+            buildErrors.push(`[${strategy.label} retry] ${(retryStderr || retryMsg).slice(0, 500)}`);
           }
-        } else {
-          logger.warn(`Build with ${strategy.label} failed: ${stderr.slice(0, 500)}`);
         }
       }
     }
 
     if (!built) {
-      throw new Error("All build strategies failed. The APK may contain resources that cannot be recompiled.");
+      const details = buildErrors.join("\n");
+      logger.error(`All build strategies failed. Details:\n${details}`);
+      throw new Error(`All build strategies failed. ${buildErrors[0] || "The APK may contain resources that cannot be recompiled."}`);
     }
 
     session.progress = "Cleaning up APK...";
