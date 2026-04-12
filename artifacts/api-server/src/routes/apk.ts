@@ -1084,41 +1084,8 @@ async function fixEnumErrors(errors: EnumErrorInfo[]): Promise<number> {
         const lineNum = idx + 1;
         if (!errorLineSet.has(lineNum)) return line;
 
-        let fixedLine = line;
-        if (fixedLine.includes("<item") && fixedLine.includes("</item>")) {
-          const dimMatch = fixedLine.match(/>(\s*-[12]\s*)<\/item>/);
-          if (dimMatch) {
-            const val = dimMatch[1].trim();
-            const replacement = val === "-1" ? "match_parent" : val === "-2" ? "wrap_content" : "";
-            if (replacement) {
-              fixedLine = fixedLine.replace(/>(\s*-[12]\s*)<\/item>/, `>${replacement}</item>`);
-            } else {
-              fixedLine = "";
-            }
-          } else {
-            fixedLine = "";
-          }
-        } else {
-          fixedLine = fixedLine.replace(
-            /(\w+:?\w+)\s*=\s*"(-?\d+)"/g,
-            (match, attr, val) => {
-              if (val === "-1") return `${attr}="match_parent"`;
-              if (val === "-2") return `${attr}="wrap_content"`;
-              const enumAttrs = [
-                "android:ellipsize", "android:gravity", "android:inputType",
-                "android:orientation", "android:visibility", "android:scrollbarStyle",
-                "android:layerType", "android:overScrollMode", "android:importantForAccessibility",
-                "android:drawingCacheQuality", "android:layoutDirection", "android:textDirection",
-                "android:textAlignment", "android:breakStrategy", "android:hyphenationFrequency",
-                "android:autoSizeTextType", "android:justificationMode",
-              ];
-              if (enumAttrs.some(a => attr === a || attr.endsWith(`:${a.split(":")[1]}`))) {
-                return "";
-              }
-              return match;
-            }
-          );
-        }
+        let fixedLine = "";
+        logger.info(`Removing error line ${lineNum} from ${filePath}: ${line.trim().slice(0, 100)}`);
 
         if (fixedLine !== line) fixed++;
         return fixedLine;
@@ -1139,58 +1106,30 @@ async function fixEnumErrors(errors: EnumErrorInfo[]): Promise<number> {
 async function fixAllResourceIssuesInValues(decompDir: string): Promise<number> {
   let fixed = 0;
 
-  const dimensionMap: Record<string, string> = {
-    "-1": "match_parent",
-    "-2": "wrap_content",
-  };
-
   async function fixFile(filePath: string): Promise<void> {
     try {
       const content = await fs.readFile(filePath, "utf-8");
       let newContent = content;
 
       newContent = newContent.replace(
-        /<item\s+name="([^"]*)"([^>]*)>\s*(-?\d+)\s*<\/item>/g,
-        (match, name, attrs, value) => {
-          const nameLC = name.toLowerCase();
-          const val = value.trim();
+        /[ \t]*<item\s+name="[^"]*"[^>]*>\s*-?\d+\s*<\/item>\s*\n?/g,
+        () => {
+          fixed++;
+          return "";
+        }
+      );
 
-          if (dimensionMap[val] && (nameLC.includes("width") || nameLC.includes("height") || nameLC.includes("size") || nameLC.includes("row") || nameLC.includes("column"))) {
-            fixed++;
-            return `<item name="${name}"${attrs}>${dimensionMap[val]}</item>`;
-          }
-
-          const enumNames = [
-            "ellipsize", "gravity", "inputType", "orientation", "visibility",
-            "scrollbarStyle", "layerType", "overScrollMode", "importantForAccessibility",
-            "drawingCacheQuality", "layoutDirection", "textDirection", "textAlignment",
-            "breakStrategy", "hyphenationFrequency", "autoSizeTextType", "justificationMode",
-            "scrollIndicators", "forceHasOverlappingRendering", "fontWeight",
-          ];
-          const isEnum = enumNames.some(e => nameLC.includes(e));
-
-          if (isEnum) {
-            fixed++;
-            return "";
-          }
-
-          if (parseInt(val) < 0 && !nameLC.includes("margin") && !nameLC.includes("padding") && !nameLC.includes("offset") && !nameLC.includes("elevation") && !nameLC.includes("translation")) {
-            const mapped = dimensionMap[val];
-            if (mapped) {
-              fixed++;
-              return `<item name="${name}"${attrs}>${mapped}</item>`;
-            }
-            fixed++;
-            return "";
-          }
-
-          return match;
+      newContent = newContent.replace(
+        /[ \t]*<item\s+name="[^"]*"[^>]*>\s*(?:match_parent|wrap_content|fill_parent)\s*<\/item>\s*\n?/g,
+        () => {
+          fixed++;
+          return "";
         }
       );
 
       if (newContent !== content) {
         await fs.writeFile(filePath, newContent, "utf-8");
-        logger.info(`Pre-fixed resource values in ${path.relative(decompDir, filePath)}`);
+        logger.info(`Pre-fixed ${fixed} resource values in ${path.relative(decompDir, filePath)}`);
       }
     } catch {}
   }
@@ -1360,46 +1299,49 @@ async function recompileApk(session: Session): Promise<void> {
     let built = false;
     const buildErrors: string[] = [];
     for (const strategy of buildStrategies) {
-      let attempts = 0;
-      const maxAttempts = 3;
+      try {
+        session.progress = `Recompiling APK (${strategy.label})...`;
+        logger.info(`Trying build strategy: ${strategy.label}`);
+        await tryApktoolBuild(strategy.args);
+        built = true;
+        logger.info(`Build succeeded with strategy: ${strategy.label}`);
+        break;
+      } catch (err: unknown) {
+        const stderr = (err as { stderr?: string }).stderr || "";
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const fullError = stderr || errMsg;
+        logger.error(`Build ${strategy.label} failed: ${fullError.slice(0, 2000)}`);
 
-      while (attempts < maxAttempts) {
-        attempts++;
-        try {
-          session.progress = `Recompiling APK (${strategy.label}${attempts > 1 ? `, attempt ${attempts}` : ""})...`;
-          logger.info(`Trying build strategy: ${strategy.label}, attempt ${attempts}`);
-          await tryApktoolBuild(strategy.args);
-          built = true;
-          logger.info(`Build succeeded with strategy: ${strategy.label} (attempt ${attempts})`);
-          break;
-        } catch (err: unknown) {
-          const stderr = (err as { stderr?: string }).stderr || "";
-          const errMsg = err instanceof Error ? err.message : String(err);
-          const fullError = stderr || errMsg;
-          logger.error(`Build ${strategy.label} attempt ${attempts} failed: ${fullError.slice(0, 2000)}`);
+        const resErrors = parseResourceErrors(stderr, session.decompDir);
+        const dupFiles = parseFailedFiles(stderr, session.decompDir);
 
-          const enumErrors = parseResourceErrors(stderr, session.decompDir);
-          const dupFiles = parseFailedFiles(stderr, session.decompDir);
-          let didFix = false;
-
-          if (enumErrors.length > 0 && attempts < maxAttempts) {
-            session.progress = `Fixing ${enumErrors.length} enum error(s)...`;
-            const fixed = await fixEnumErrors(enumErrors);
-            logger.info(`Fixed ${fixed} enum errors from build output`);
-            didFix = fixed > 0;
-          }
-
-          if (dupFiles.length > 0 && attempts < maxAttempts) {
-            session.progress = `Fixing ${dupFiles.length} file(s) with duplicate attributes...`;
-            await fixDuplicateAttributes(session.decompDir, dupFiles);
-            didFix = true;
-          }
-
-          if (!didFix || attempts >= maxAttempts) {
-            buildErrors.push(`[${strategy.label}] ${fullError.slice(0, 500)}`);
+        if (resErrors.length > 0) {
+          session.progress = `Fixing ${resErrors.length} resource error(s) and retrying...`;
+          const fixed = await fixEnumErrors(resErrors);
+          logger.info(`Fixed ${fixed} resource errors, retrying ${strategy.label}...`);
+          try {
+            await tryApktoolBuild(strategy.args);
+            built = true;
+            logger.info(`Build succeeded with ${strategy.label} after fixes`);
             break;
+          } catch (retryErr: unknown) {
+            const retryStderr = (retryErr as { stderr?: string }).stderr || "";
+            logger.error(`Retry ${strategy.label} failed: ${(retryStderr || String(retryErr)).slice(0, 1000)}`);
           }
         }
+
+        if (!built && dupFiles.length > 0) {
+          await fixDuplicateAttributes(session.decompDir, dupFiles);
+          try {
+            await tryApktoolBuild(strategy.args);
+            built = true;
+            logger.info(`Build succeeded with ${strategy.label} after dup fix`);
+            break;
+          } catch {}
+        }
+
+        buildErrors.push(`[${strategy.label}] ${fullError.slice(0, 500)}`);
+        logger.info(`Moving to next build strategy...`);
       }
       if (built) break;
     }
