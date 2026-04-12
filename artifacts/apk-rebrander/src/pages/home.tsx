@@ -170,7 +170,14 @@ function StepUpload({ sessionId, setSessionId, status, error }: { sessionId: str
         body: formData
       });
       
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) {
+        let detail = `Server returned ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData.error) detail = errData.error;
+        } catch {}
+        throw new Error(detail);
+      }
       
       const data = await res.json();
       setSessionId(data.sessionId);
@@ -178,7 +185,8 @@ function StepUpload({ sessionId, setSessionId, status, error }: { sessionId: str
       toast({ title: "Upload successful", description: "Decompiling APK..." });
     } catch (err) {
       console.error(err);
-      toast({ title: "Upload error", description: "Failed to upload APK", variant: "destructive" });
+      const msg = err instanceof Error ? err.message : "Failed to upload APK";
+      toast({ title: "Upload error", description: msg, variant: "destructive" });
       setUploading(false);
       setProgress(0);
     }
