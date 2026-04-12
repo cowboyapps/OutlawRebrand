@@ -34,6 +34,8 @@ export default function Home() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [buildTriggered, setBuildTriggered] = useState(false);
+
   const { data: statusData, isError: isStatusError } = useGetSessionStatus(
     sessionId || "", 
     { 
@@ -41,8 +43,10 @@ export default function Home() {
         enabled: !!sessionId,
         queryKey: sessionId ? getGetSessionStatusQueryKey(sessionId) : ["status", "empty"],
         refetchInterval: (query) => {
-          const status = query.state.data?.status;
-          return (status === "decompiling" || status === "recompiling" || status === "uploading") ? 1000 : false;
+          const s = query.state.data?.status;
+          if (s === "decompiling" || s === "recompiling" || s === "uploading") return 1000;
+          if (buildTriggered && (s === "ready" || s === "error")) return 500;
+          return false;
         }
       } 
     }
@@ -125,7 +129,8 @@ export default function Home() {
               sessionId={sessionId} 
               status={status} 
               statusData={statusData}
-              onBack={() => setCurrentStep(3)} 
+              onBack={() => setCurrentStep(3)}
+              onBuildTriggered={() => setBuildTriggered(true)}
             />
           )}
         </div>
@@ -587,8 +592,9 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   );
 }
 
-function StepBuild({ sessionId, status, statusData, onBack }: { sessionId: string, status?: string, statusData: SessionStatus | undefined, onBack: () => void }) {
+function StepBuild({ sessionId, status, statusData, onBack, onBuildTriggered }: { sessionId: string, status?: string, statusData: SessionStatus | undefined, onBack: () => void, onBuildTriggered: () => void }) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isTriggering, setIsTriggering] = useState(false);
 
   useEffect(() => {
@@ -599,10 +605,12 @@ function StepBuild({ sessionId, status, statusData, onBack }: { sessionId: strin
 
   const handleBuild = async () => {
     setIsTriggering(true);
+    onBuildTriggered();
     try {
       const res = await fetch(`/api/apk/${sessionId}/recompile`, { method: "POST" });
       if (!res.ok) throw new Error("Failed to start build");
       toast({ title: "Build started", description: "Recompiling the application..." });
+      queryClient.invalidateQueries({ queryKey: getGetSessionStatusQueryKey(sessionId) });
     } catch (err) {
       console.error(err);
       toast({ title: "Error", description: "Failed to start build process", variant: "destructive" });
