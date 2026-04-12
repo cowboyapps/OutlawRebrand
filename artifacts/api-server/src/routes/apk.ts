@@ -25,7 +25,7 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
-const MAX_SESSIONS = 3;
+const MAX_SESSIONS = 2;
 
 async function cleanupOldSessions(): Promise<void> {
   if (sessions.size <= MAX_SESSIONS) return;
@@ -859,6 +859,8 @@ async function recompileApk(session: Session): Promise<void> {
       "rebrander",
       "rebrander123",
     ], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
+
+    await fs.unlink(unsignedApk).catch(() => {});
 
     session.status = "done";
     session.progress = "APK is ready for download";
