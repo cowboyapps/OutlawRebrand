@@ -1142,16 +1142,18 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
         "maxWidth", "maxHeight", "dropDownWidth", "dropDownHeight",
       ];
       newContent = newContent.replace(
-        /\s*([\w]+:(\w+))\s*=\s*"(-?\d+)"/g,
+        /\s*([\w]+:(\w+))\s*=\s*"([^"]*)"/g,
         (match, fullAttr, attrName, val) => {
+          if (strictDimNames.includes(attrName)) {
+            if (val === "wrap_content" || val === "match_parent" || val === "fill_parent" || /^-?\d+$/.test(val)) {
+              fixed++;
+              return "";
+            }
+          }
           if (layoutNames.includes(attrName)) {
             if (val === "-1") { fixed++; return ` ${fullAttr}="match_parent"`; }
             if (val === "-2") { fixed++; return ` ${fullAttr}="wrap_content"`; }
             if (val === "0") { fixed++; return ` ${fullAttr}="0dp"`; }
-          }
-          if (strictDimNames.includes(attrName)) {
-            fixed++;
-            return "";
           }
           return match;
         }
