@@ -1076,7 +1076,7 @@ async function fixEnumErrors(errors: EnumErrorInfo[]): Promise<number> {
 
         let fixedLine = line;
         if (fixedLine.includes("<item") && fixedLine.includes("</item>")) {
-          fixedLine = `<!-- ${fixedLine.trim().replace(/--/g, "- -")} -->`;
+          fixedLine = "";
         } else {
           fixedLine = fixedLine.replace(
             /(\w+:?\w+)\s*=\s*"(\d+)"/g,
@@ -1128,7 +1128,7 @@ async function fixAllEnumIssuesInStyles(decompDir: string): Promise<number> {
             const content = await fs.readFile(full, "utf-8");
             let newContent = content;
             newContent = newContent.replace(
-              /<item\s+name="([^"]*)"[^>]*>\s*(\d+)\s*<\/item>/g,
+              /<item\s+name="([^"]*)"[^>]*>\s*(\d+)\s*<\/item>\s*/g,
               (match, name, value) => {
                 const enumNames = [
                   "ellipsize", "gravity", "inputType", "orientation", "visibility",
@@ -1141,7 +1141,7 @@ async function fixAllEnumIssuesInStyles(decompDir: string): Promise<number> {
                 const isEnum = enumNames.some(e => nameLC.includes(e));
                 if (isEnum || parseInt(value) <= 20) {
                   fixed++;
-                  return `<!-- removed: ${match.replace(/--/g, "- -")} -->`;
+                  return "";
                 }
                 return match;
               }
@@ -1306,8 +1306,9 @@ async function recompileApk(session: Session): Promise<void> {
     session.progress = "Recompiling APK with apktool...";
 
     const buildStrategies = [
-      { label: "aapt2", args: ["b", "-f", "--use-aapt2", "-o", unsignedApk, session.decompDir] },
       { label: "aapt1", args: ["b", "-f", "-o", unsignedApk, session.decompDir] },
+      { label: "aapt2", args: ["b", "-f", "--use-aapt2", "-o", unsignedApk, session.decompDir] },
+      { label: "aapt1-no-res", args: ["b", "-f", "--no-res", "-o", unsignedApk, session.decompDir] },
     ];
 
     let built = false;
