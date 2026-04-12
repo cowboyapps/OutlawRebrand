@@ -15,4 +15,6 @@ export interface ImageInfo {
   type: ImageInfoType;
   width?: number;
   height?: number;
+  /** Base64 data URL thumbnail of the image */
+  thumbnail?: string;
 }

@@ -416,8 +416,31 @@ async function findUrls(decompDir: string): Promise<string[]> {
   return Array.from(urls).slice(0, 200);
 }
 
-async function findImages(decompDir: string): Promise<Array<{ path: string; name: string; directory: string; size: number; type: string; width?: number; height?: number }>> {
-  const images: Array<{ path: string; name: string; directory: string; size: number; type: string; width?: number; height?: number }> = [];
+interface ImageInfo {
+  path: string;
+  name: string;
+  directory: string;
+  size: number;
+  type: string;
+  width?: number;
+  height?: number;
+  thumbnail?: string;
+}
+
+async function generateThumbnail(fullPath: string): Promise<string | undefined> {
+  try {
+    const buf = await sharp(fullPath)
+      .resize(96, 96, { fit: "inside", withoutEnlargement: false })
+      .png()
+      .toBuffer();
+    return `data:image/png;base64,${buf.toString("base64")}`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function findImages(decompDir: string): Promise<ImageInfo[]> {
+  const images: ImageInfo[] = [];
   const imageExts = [".png", ".jpg", ".jpeg", ".webp", ".xml"];
 
   async function scanDir(dir: string): Promise<void> {
@@ -444,14 +467,15 @@ async function findImages(decompDir: string): Promise<Array<{ path: string; name
 
               let width: number | undefined;
               let height: number | undefined;
+              let thumbnail: string | undefined;
 
               if (type !== "xml") {
                 try {
                   const metadata = await sharp(fullPath).metadata();
                   width = metadata.width;
                   height = metadata.height;
+                  thumbnail = await generateThumbnail(fullPath);
                 } catch {
-                  // skip unreadable images
                 }
               }
 
@@ -463,13 +487,13 @@ async function findImages(decompDir: string): Promise<Array<{ path: string; name
                 type,
                 width,
                 height,
+                thumbnail,
               });
             }
           }
         }
       }
     } catch {
-      // skip inaccessible dirs
     }
   }
 
@@ -921,7 +945,17 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
     }
 
     await fs.unlink(req.file.path);
-    res.json({ success: true, message: `Image replaced: ${targetPath}` });
+    const thumbnail = targetExt !== ".xml" ? await generateThumbnail(fullTargetPath) : undefined;
+    let newWidth: number | undefined;
+    let newHeight: number | undefined;
+    if (targetExt !== ".xml") {
+      try {
+        const meta = await sharp(fullTargetPath).metadata();
+        newWidth = meta.width;
+        newHeight = meta.height;
+      } catch {}
+    }
+    res.json({ success: true, message: `Image replaced: ${targetPath}`, thumbnail, width: newWidth, height: newHeight });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to replace image";
     res.status(500).json({ error: message });

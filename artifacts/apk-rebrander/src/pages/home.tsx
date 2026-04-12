@@ -548,8 +548,8 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [hideXml, setHideXml] = useState(false);
-  const [imgCacheBust, setImgCacheBust] = useState(Date.now());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [replacedImages, setReplacedImages] = useState<Map<string, string>>(new Map());
 
   const [xmlPreview, setXmlPreview] = useState<{ path: string; content: string } | null>(null);
 
@@ -614,15 +614,16 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
         method: "POST",
         body: formData
       });
+      const result = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to replace image");
+        throw new Error(result.error || "Failed to replace image");
       }
       
+      if (result.thumbnail) {
+        setReplacedImages(prev => new Map(prev).set(replacingPath, result.thumbnail));
+      }
       const desc = roundForReplace ? "Image replaced, resized, and made round." : "Image replaced and auto-resized to fit.";
       toast({ title: "Success", description: desc });
-      setImgCacheBust(Date.now());
-      queryClient.invalidateQueries({ queryKey: getListImagesQueryKey(sessionId) });
       setXmlPreview(null);
       setSelectedImage(null);
     } catch (err) {
@@ -684,6 +685,12 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
             Showing {filteredImages?.length || 0} of {imageList?.images?.length || 0} images
           </div>
         )}
+        {replacedImages.size > 0 && (
+          <div className="text-sm text-green-600 font-medium mb-3 flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+            {replacedImages.size} image{replacedImages.size !== 1 ? "s" : ""} replaced
+          </div>
+        )}
         
         {xmlPreview && (
           <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 sm:p-4">
@@ -704,12 +711,19 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
             const isActive = xmlPreview?.path === img.path;
             const isSelected = selectedImage === img.path;
             const isRoundIcon = img.name.includes("round") || img.directory.includes("round");
+            const isReplaced = replacedImages.has(img.path);
+            const thumbSrc = replacedImages.get(img.path) || img.thumbnail;
             return (
               <div 
                 key={img.path} 
-                className={`relative group rounded-md border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col ${isActive || isSelected ? "border-primary ring-2 ring-primary/20" : "border-border"}`}
+                className={`relative group rounded-md border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col ${isReplaced ? "border-green-500 ring-2 ring-green-500/20" : isActive || isSelected ? "border-primary ring-2 ring-primary/20" : "border-border"}`}
                 onClick={() => handleImageClick(img.path, isXml)}
               >
+                {isReplaced && (
+                  <div className="absolute top-1 right-1 z-10 bg-green-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow">
+                    REPLACED
+                  </div>
+                )}
                 <div className="h-24 sm:h-32 flex items-center justify-center p-2 sm:p-4">
                   {isXml ? (
                     <div className="text-muted-foreground flex flex-col items-center">
@@ -717,12 +731,17 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
                       <span className="text-xs font-mono">XML Drawable</span>
                       <span className="text-[10px] text-muted-foreground mt-1">Click to preview</span>
                     </div>
-                  ) : (
+                  ) : thumbSrc ? (
                     <img 
-                      src={`/api/apk/${sessionId}/image?path=${encodeURIComponent(img.path)}&t=${imgCacheBust}`} 
+                      src={thumbSrc} 
                       alt={img.name}
                       className={`max-h-full max-w-full object-contain drop-shadow-md ${isRoundIcon ? "rounded-full" : ""}`}
                     />
+                  ) : (
+                    <div className="text-muted-foreground flex flex-col items-center">
+                      <ImageIcon className="h-8 w-8 opacity-50 mb-2" />
+                      <span className="text-[10px]">No preview</span>
+                    </div>
                   )}
                 </div>
                 <div className="p-1.5 sm:p-2 text-[10px] sm:text-xs bg-background/90 backdrop-blur border-t border-border mt-auto">

@@ -530,6 +530,9 @@ components:
           type: integer
         height:
           type: integer
+        thumbnail:
+          type: string
+          description: Base64 data URL thumbnail of the image
       required:
         - path
         - name

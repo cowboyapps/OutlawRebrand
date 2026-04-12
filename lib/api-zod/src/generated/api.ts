@@ -165,6 +165,10 @@ export const ListImagesResponse = zod.object({
       type: zod.enum(["png", "jpg", "xml", "webp", "other"]),
       width: zod.number().optional(),
       height: zod.number().optional(),
+      thumbnail: zod
+        .string()
+        .optional()
+        .describe("Base64 data URL thumbnail of the image"),
     }),
   ),
   total: zod.number(),
