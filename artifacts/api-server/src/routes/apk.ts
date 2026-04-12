@@ -707,6 +707,60 @@ async function removeApktoolDuplicates(decompDir: string): Promise<number> {
   return removed;
 }
 
+async function removeSmaliAssetsDirs(decompDir: string): Promise<number> {
+  let removed = 0;
+  const entries = await fs.readdir(decompDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name.startsWith("smali_assets")) {
+      const assetsDir = path.join(decompDir, "assets");
+      let hasDex = false;
+      try {
+        const assetFiles = await fs.readdir(assetsDir);
+        hasDex = assetFiles.some(f => f.endsWith(".dex"));
+      } catch {}
+      if (hasDex) {
+        await fs.rm(path.join(decompDir, entry.name), { recursive: true, force: true });
+        removed++;
+        logger.info(`Removed ${entry.name} (original dex files preserved in assets/)`);
+      } else {
+        logger.info(`Keeping ${entry.name} (no original dex files in assets/)`);
+      }
+    }
+  }
+  return removed;
+}
+
+async function removeStrayRootDex(apkPath: string): Promise<void> {
+  const script = `
+import zipfile, sys, os, shutil
+apk = sys.argv[1]
+tmp = apk + '.cleaned'
+stray = []
+with zipfile.ZipFile(apk, 'r') as zin:
+    for info in zin.infolist():
+        if info.filename.endswith('.dex') and '/' not in info.filename:
+            import re
+            if not re.match(r'^classes\\d*\\.dex$', info.filename):
+                stray.append(info.filename)
+    if not stray:
+        sys.exit(0)
+    with zipfile.ZipFile(tmp, 'w') as zout:
+        for info in zin.infolist():
+            if info.filename not in stray:
+                zout.writestr(info, zin.read(info.filename))
+shutil.move(tmp, apk)
+print('Removed: ' + ', '.join(stray))
+`;
+  try {
+    const { stdout } = await execFileAsync("python3", ["-c", script, apkPath], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
+    if (stdout.trim()) {
+      logger.info(stdout.trim());
+    }
+  } catch (err) {
+    logger.warn(`Failed to remove stray dex files: ${err}`);
+  }
+}
+
 async function tryApktoolBuild(args: string[]): Promise<void> {
   await execFileAsync("apktool", args, {
     timeout: 300000,
@@ -724,6 +778,11 @@ async function recompileApk(session: Session): Promise<void> {
     const dupCount = await removeApktoolDuplicates(session.decompDir);
     if (dupCount > 0) {
       logger.info(`Removed ${dupCount} APKTOOL_DUPLICATE files`);
+    }
+
+    const smaliRemoved = await removeSmaliAssetsDirs(session.decompDir);
+    if (smaliRemoved > 0) {
+      logger.info(`Removed ${smaliRemoved} smali_assets directories (originals preserved)`);
     }
 
     session.progress = "Recompiling APK with apktool...";
@@ -763,6 +822,9 @@ async function recompileApk(session: Session): Promise<void> {
     if (!built) {
       throw new Error("All build strategies failed. The APK may contain resources that cannot be recompiled.");
     }
+
+    session.progress = "Cleaning up APK...";
+    await removeStrayRootDex(unsignedApk);
 
     session.progress = "Generating signing key...";
     try {
