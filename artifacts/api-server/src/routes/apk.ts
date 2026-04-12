@@ -1041,15 +1041,25 @@ interface EnumErrorInfo {
   line: number;
 }
 
-function parseEnumErrors(stderr: string, decompDir: string): EnumErrorInfo[] {
+function parseResourceErrors(stderr: string, decompDir: string): EnumErrorInfo[] {
   const errors: EnumErrorInfo[] = [];
-  const regex = /W:\s+(\/[^\s:]+\.xml):(\d+):\s*error:\s*expected enum but got \(raw string\)/g;
-  let m;
-  while ((m = regex.exec(stderr)) !== null) {
-    const absPath = m[1];
-    const lineNum = parseInt(m[2], 10);
-    if (absPath.startsWith(decompDir)) {
-      errors.push({ file: absPath, line: lineNum });
+  const patterns = [
+    /W:\s+(\/[^\s:]+\.xml):(\d+):\s*error:\s*expected enum but got \(raw string\)/g,
+    /W:\s+(\/[^\s:]+\.xml):(\d+):\s*error:\s*'[^']*' is incompatible with attribute/g,
+    /W:\s+(\/[^\s:]+\.xml):(\d+):\s*error:\s*(?:invalid|not a valid)/gi,
+    /W:\s+(\/[^\s:]+\.xml):(\d+):\s*error:/g,
+  ];
+  const seen = new Set<string>();
+  for (const regex of patterns) {
+    let m;
+    while ((m = regex.exec(stderr)) !== null) {
+      const absPath = m[1];
+      const lineNum = parseInt(m[2], 10);
+      const key = `${absPath}:${lineNum}`;
+      if (absPath.startsWith(decompDir) && !seen.has(key)) {
+        seen.add(key);
+        errors.push({ file: absPath, line: lineNum });
+      }
     }
   }
   return errors;
@@ -1076,11 +1086,24 @@ async function fixEnumErrors(errors: EnumErrorInfo[]): Promise<number> {
 
         let fixedLine = line;
         if (fixedLine.includes("<item") && fixedLine.includes("</item>")) {
-          fixedLine = "";
+          const dimMatch = fixedLine.match(/>(\s*-[12]\s*)<\/item>/);
+          if (dimMatch) {
+            const val = dimMatch[1].trim();
+            const replacement = val === "-1" ? "match_parent" : val === "-2" ? "wrap_content" : "";
+            if (replacement) {
+              fixedLine = fixedLine.replace(/>(\s*-[12]\s*)<\/item>/, `>${replacement}</item>`);
+            } else {
+              fixedLine = "";
+            }
+          } else {
+            fixedLine = "";
+          }
         } else {
           fixedLine = fixedLine.replace(
-            /(\w+:?\w+)\s*=\s*"(\d+)"/g,
-            (match, attr) => {
+            /(\w+:?\w+)\s*=\s*"(-?\d+)"/g,
+            (match, attr, val) => {
+              if (val === "-1") return `${attr}="match_parent"`;
+              if (val === "-2") return `${attr}="wrap_content"`;
               const enumAttrs = [
                 "android:ellipsize", "android:gravity", "android:inputType",
                 "android:orientation", "android:visibility", "android:scrollbarStyle",
@@ -1113,56 +1136,79 @@ async function fixEnumErrors(errors: EnumErrorInfo[]): Promise<number> {
   return fixed;
 }
 
-async function fixAllEnumIssuesInStyles(decompDir: string): Promise<number> {
+async function fixAllResourceIssuesInValues(decompDir: string): Promise<number> {
   let fixed = 0;
 
-  async function walk(dir: string): Promise<void> {
+  const dimensionMap: Record<string, string> = {
+    "-1": "match_parent",
+    "-2": "wrap_content",
+  };
+
+  async function fixFile(filePath: string): Promise<void> {
     try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(full);
-        } else if (entry.name.endsWith(".xml")) {
-          try {
-            const content = await fs.readFile(full, "utf-8");
-            let newContent = content;
-            newContent = newContent.replace(
-              /<item\s+name="([^"]*)"[^>]*>\s*(\d+)\s*<\/item>\s*/g,
-              (match, name, value) => {
-                const enumNames = [
-                  "ellipsize", "gravity", "inputType", "orientation", "visibility",
-                  "scrollbarStyle", "layerType", "overScrollMode", "importantForAccessibility",
-                  "drawingCacheQuality", "layoutDirection", "textDirection", "textAlignment",
-                  "breakStrategy", "hyphenationFrequency", "autoSizeTextType", "justificationMode",
-                  "scrollIndicators", "forceHasOverlappingRendering", "fontWeight",
-                ];
-                const nameLC = name.toLowerCase();
-                const isEnum = enumNames.some(e => nameLC.includes(e));
-                if (isEnum || parseInt(value) <= 20) {
-                  fixed++;
-                  return "";
-                }
-                return match;
-              }
-            );
-            if (newContent !== content) {
-              await fs.writeFile(full, newContent, "utf-8");
-              logger.info(`Pre-fixed enum values in ${path.relative(decompDir, full)}`);
+      const content = await fs.readFile(filePath, "utf-8");
+      let newContent = content;
+
+      newContent = newContent.replace(
+        /<item\s+name="([^"]*)"([^>]*)>\s*(-?\d+)\s*<\/item>/g,
+        (match, name, attrs, value) => {
+          const nameLC = name.toLowerCase();
+          const val = value.trim();
+
+          if (dimensionMap[val] && (nameLC.includes("width") || nameLC.includes("height") || nameLC.includes("size") || nameLC.includes("row") || nameLC.includes("column"))) {
+            fixed++;
+            return `<item name="${name}"${attrs}>${dimensionMap[val]}</item>`;
+          }
+
+          const enumNames = [
+            "ellipsize", "gravity", "inputType", "orientation", "visibility",
+            "scrollbarStyle", "layerType", "overScrollMode", "importantForAccessibility",
+            "drawingCacheQuality", "layoutDirection", "textDirection", "textAlignment",
+            "breakStrategy", "hyphenationFrequency", "autoSizeTextType", "justificationMode",
+            "scrollIndicators", "forceHasOverlappingRendering", "fontWeight",
+          ];
+          const isEnum = enumNames.some(e => nameLC.includes(e));
+
+          if (isEnum) {
+            fixed++;
+            return "";
+          }
+
+          if (parseInt(val) < 0 && !nameLC.includes("margin") && !nameLC.includes("padding") && !nameLC.includes("offset") && !nameLC.includes("elevation") && !nameLC.includes("translation")) {
+            const mapped = dimensionMap[val];
+            if (mapped) {
+              fixed++;
+              return `<item name="${name}"${attrs}>${mapped}</item>`;
             }
-          } catch {}
+            fixed++;
+            return "";
+          }
+
+          return match;
         }
+      );
+
+      if (newContent !== content) {
+        await fs.writeFile(filePath, newContent, "utf-8");
+        logger.info(`Pre-fixed resource values in ${path.relative(decompDir, filePath)}`);
       }
     } catch {}
   }
 
-  await walk(path.join(decompDir, "res", "values"));
   const resDir = path.join(decompDir, "res");
   try {
     const resDirs = await fs.readdir(resDir, { withFileTypes: true });
     for (const d of resDirs) {
       if (d.isDirectory() && d.name.startsWith("values")) {
-        await walk(path.join(resDir, d.name));
+        const valDir = path.join(resDir, d.name);
+        try {
+          const files = await fs.readdir(valDir);
+          for (const f of files) {
+            if (f.endsWith(".xml")) {
+              await fixFile(path.join(valDir, f));
+            }
+          }
+        } catch {}
       }
     }
   } catch {}
@@ -1298,9 +1344,9 @@ async function recompileApk(session: Session): Promise<void> {
     }
 
     session.progress = "Fixing resource issues...";
-    const enumFixCount = await fixAllEnumIssuesInStyles(session.decompDir);
+    const enumFixCount = await fixAllResourceIssuesInValues(session.decompDir);
     if (enumFixCount > 0) {
-      logger.info(`Pre-fixed ${enumFixCount} enum issues in styles.xml files`);
+      logger.info(`Pre-fixed ${enumFixCount} resource issues in values XML files`);
     }
 
     session.progress = "Recompiling APK with apktool...";
@@ -1332,7 +1378,7 @@ async function recompileApk(session: Session): Promise<void> {
           const fullError = stderr || errMsg;
           logger.error(`Build ${strategy.label} attempt ${attempts} failed: ${fullError.slice(0, 2000)}`);
 
-          const enumErrors = parseEnumErrors(stderr, session.decompDir);
+          const enumErrors = parseResourceErrors(stderr, session.decompDir);
           const dupFiles = parseFailedFiles(stderr, session.decompDir);
           let didFix = false;
 
