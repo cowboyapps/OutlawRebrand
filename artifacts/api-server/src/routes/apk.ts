@@ -939,8 +939,8 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
         ".jpeg": "jpeg",
         ".webp": "webp",
       };
-      const outputFormat = makeRound ? "png" : (formatMap[targetExt] || "png");
-      pipeline = pipeline.toFormat(outputFormat);
+      const targetFormat = formatMap[targetExt] || "png";
+      pipeline = pipeline.toFormat(targetFormat);
 
       await pipeline.toFile(fullTargetPath + ".tmp");
       await fs.rename(fullTargetPath + ".tmp", fullTargetPath);
@@ -1242,6 +1242,36 @@ async function removeSmaliAssetsDirs(decompDir: string): Promise<number> {
   return removed;
 }
 
+async function zipalignApk(apkPath: string): Promise<void> {
+  const script = `
+import zipfile, sys, os, shutil, struct
+
+apk = sys.argv[1]
+tmp = apk + '.aligned'
+ALIGN = 4
+
+with zipfile.ZipFile(apk, 'r') as zin:
+    with zipfile.ZipFile(tmp, 'w') as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.compress_type == zipfile.ZIP_STORED:
+                info.extra = b''
+                zout.writestr(info, data)
+            else:
+                zout.writestr(info, data)
+shutil.move(tmp, apk)
+print('APK aligned')
+`;
+  try {
+    const { stdout } = await execFileAsync("python3", ["-c", script, apkPath], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
+    if (stdout.trim()) {
+      logger.info(stdout.trim());
+    }
+  } catch (err) {
+    logger.warn(`Zipalign warning (non-fatal): ${err}`);
+  }
+}
+
 async function removeStrayRootDex(apkPath: string): Promise<void> {
   const script = `
 import zipfile, sys, os, shutil
@@ -1396,6 +1426,9 @@ async function recompileApk(session: Session): Promise<void> {
 
     session.progress = "Cleaning up APK...";
     await removeStrayRootDex(unsignedApk);
+
+    session.progress = "Aligning APK...";
+    await zipalignApk(unsignedApk);
 
     session.progress = "Generating signing key...";
     try {
