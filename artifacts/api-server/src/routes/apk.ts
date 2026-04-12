@@ -1074,18 +1074,28 @@ async function fixErrorsInFiles(errors: EnumErrorInfo[]): Promise<number> {
       const content = await fs.readFile(filePath, "utf-8");
       let newContent = content;
 
+      const layoutNames = ["layout_width", "layout_height"];
+      const dimNames = [
+        "rowHeight", "columnWidth", "minWidth", "minHeight",
+        "maxWidth", "maxHeight", "dropDownWidth", "dropDownHeight",
+        "width", "height",
+      ];
       newContent = newContent.replace(
-        /(android:\w+)\s*=\s*"(-?\d+)"/g,
-        (match, attr, val) => {
-          const layoutAttrs = ["android:layout_width", "android:layout_height"];
-          if (layoutAttrs.includes(attr)) {
-            if (val === "-1") { fixed++; return `${attr}="match_parent"`; }
-            if (val === "-2") { fixed++; return `${attr}="wrap_content"`; }
-            if (val === "0") { fixed++; return `${attr}="0dp"`; }
+        /([\w]+:(\w+))\s*=\s*"(-?\d+)"/g,
+        (match, fullAttr, attrName, val) => {
+          if (layoutNames.includes(attrName)) {
+            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
+            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
+            if (val === "0") { fixed++; return `${fullAttr}="0dp"`; }
+          }
+          if (dimNames.includes(attrName)) {
+            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
+            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
+            if (parseInt(val) < 0) { fixed++; return ""; }
           }
           if (parseInt(val) < 0) {
-            if (val === "-1") { fixed++; return `${attr}="match_parent"`; }
-            if (val === "-2") { fixed++; return `${attr}="wrap_content"`; }
+            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
+            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
             fixed++;
             return "";
           }
@@ -1138,23 +1148,23 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
       const content = await fs.readFile(filePath, "utf-8");
       let newContent = content;
 
-      const layoutAttrs = ["android:layout_width", "android:layout_height"];
+      const layoutNames = ["layout_width", "layout_height"];
+      const dimNames = [
+        "rowHeight", "columnWidth", "minWidth", "minHeight",
+        "maxWidth", "maxHeight", "dropDownWidth", "dropDownHeight",
+        "width", "height",
+      ];
       newContent = newContent.replace(
-        /(android:\w+)\s*=\s*"(-?\d+)"/g,
-        (match, attr, val) => {
-          if (layoutAttrs.includes(attr)) {
-            if (val === "-1") { fixed++; return `${attr}="match_parent"`; }
-            if (val === "-2") { fixed++; return `${attr}="wrap_content"`; }
-            if (val === "0") { fixed++; return `${attr}="0dp"`; }
+        /([\w]+:(\w+))\s*=\s*"(-?\d+)"/g,
+        (match, fullAttr, attrName, val) => {
+          if (layoutNames.includes(attrName)) {
+            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
+            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
+            if (val === "0") { fixed++; return `${fullAttr}="0dp"`; }
           }
-          const dimAttrs = [
-            "android:rowHeight", "android:columnWidth", "android:minWidth", "android:minHeight",
-            "android:maxWidth", "android:maxHeight", "android:dropDownWidth", "android:dropDownHeight",
-            "android:width", "android:height",
-          ];
-          if (dimAttrs.includes(attr)) {
-            if (val === "-1") { fixed++; return `${attr}="match_parent"`; }
-            if (val === "-2") { fixed++; return `${attr}="wrap_content"`; }
+          if (dimNames.includes(attrName)) {
+            if (val === "-1") { fixed++; return `${fullAttr}="match_parent"`; }
+            if (val === "-2") { fixed++; return `${fullAttr}="wrap_content"`; }
             if (parseInt(val) < 0) { fixed++; return ""; }
           }
           return match;
