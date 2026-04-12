@@ -459,7 +459,7 @@ router.post("/apk/:sessionId/url/search", async (req: Request, res: Response) =>
 
   try {
     const searchTerm = keyword.trim();
-    const occurrences: Array<{ file: string; lineNumber: number; lineContent: string; matchedText: string }> = [];
+    const occurrences: Array<{ file: string; lineNumber: number; columnStart: number; lineContent: string; matchedText: string }> = [];
     const MAX_RESULTS = 500;
     const textExts = [".xml", ".smali", ".json", ".properties", ".txt", ".yml", ".yaml"];
 

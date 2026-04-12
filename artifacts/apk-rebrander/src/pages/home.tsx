@@ -486,7 +486,10 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
 
               <Button 
                 onClick={handleApplyReplacements} 
-                disabled={isSaving || Object.values(replacements).every(v => !v)}
+                disabled={isSaving || !occurrences.some(occ => {
+                  const v = replacements[occKey(occ)];
+                  return v && v !== occ.matchedText;
+                })}
                 className="w-full"
               >
                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
