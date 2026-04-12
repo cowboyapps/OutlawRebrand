@@ -9,6 +9,7 @@
 export interface BatchReplaceEntry {
   file: string;
   lineNumber: number;
+  columnStart: number;
   oldText: string;
   newText: string;
 }

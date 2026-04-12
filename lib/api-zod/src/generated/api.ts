@@ -115,6 +115,7 @@ export const SearchKeywordResponse = zod.object({
     zod.object({
       file: zod.string(),
       lineNumber: zod.number(),
+      columnStart: zod.number(),
       lineContent: zod.string(),
       matchedText: zod.string(),
     }),
@@ -134,6 +135,7 @@ export const BatchReplaceBody = zod.object({
     zod.object({
       file: zod.string(),
       lineNumber: zod.number(),
+      columnStart: zod.number(),
       oldText: zod.string(),
       newText: zod.string(),
     }),
@@ -143,6 +145,7 @@ export const BatchReplaceBody = zod.object({
 export const BatchReplaceResponse = zod.object({
   success: zod.boolean(),
   applied: zod.number(),
+  perFile: zod.record(zod.string(), zod.number()),
 });
 
 /**

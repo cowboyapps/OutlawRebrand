@@ -73,6 +73,7 @@ export interface KeywordSearchBody {
 export interface KeywordOccurrence {
   file: string;
   lineNumber: number;
+  columnStart: number;
   lineContent: string;
   matchedText: string;
 }
@@ -85,6 +86,7 @@ export interface KeywordSearchResult {
 export interface BatchReplaceEntry {
   file: string;
   lineNumber: number;
+  columnStart: number;
   oldText: string;
   newText: string;
 }
@@ -93,9 +95,12 @@ export interface BatchReplaceBody {
   replacements: BatchReplaceEntry[];
 }
 
+export type BatchReplaceResultPerFile = { [key: string]: number };
+
 export interface BatchReplaceResult {
   success: boolean;
   applied: number;
+  perFile: BatchReplaceResultPerFile;
 }
 
 export type ImageInfoType = (typeof ImageInfoType)[keyof typeof ImageInfoType];

@@ -10,6 +10,7 @@ export * from "./apkInfo";
 export * from "./batchReplaceBody";
 export * from "./batchReplaceEntry";
 export * from "./batchReplaceResult";
+export * from "./batchReplaceResultPerFile";
 export * from "./errorResponse";
 export * from "./getImageParams";
 export * from "./healthStatus";

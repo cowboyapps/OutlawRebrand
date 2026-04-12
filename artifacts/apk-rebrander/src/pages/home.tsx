@@ -259,6 +259,7 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
   const [hasSearched, setHasSearched] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [appliedCount, setAppliedCount] = useState<number | null>(null);
+  const [appliedPerFile, setAppliedPerFile] = useState<Record<string, number> | null>(null);
 
   useEffect(() => {
     if (apkInfo) {
@@ -266,7 +267,7 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
     }
   }, [apkInfo]);
 
-  const occKey = (occ: KeywordOccurrence) => `${occ.file}:${occ.lineNumber}`;
+  const occKey = (occ: KeywordOccurrence) => `${occ.file}:${occ.lineNumber}:${occ.columnStart}`;
 
   const handleSearch = async () => {
     if (!keyword.trim()) return;
@@ -274,9 +275,14 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
     setAppliedCount(null);
     try {
       const result = await searchKeyword.mutateAsync({ sessionId, data: { keyword: keyword.trim() } });
-      setOccurrences(result.occurrences || []);
+      const occs = result.occurrences || [];
+      setOccurrences(occs);
       setHasSearched(true);
-      setReplacements({});
+      const prefilled: Record<string, string> = {};
+      for (const occ of occs) {
+        prefilled[`${occ.file}:${occ.lineNumber}:${occ.columnStart}`] = occ.matchedText;
+      }
+      setReplacements(prefilled);
       setBulkValue("");
     } catch {
       toast({ title: "Error", description: "Search failed", variant: "destructive" });
@@ -303,17 +309,19 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
       .map(occ => ({
         file: occ.file,
         lineNumber: occ.lineNumber,
+        columnStart: occ.columnStart,
         oldText: occ.matchedText,
         newText: replacements[occKey(occ)],
       }));
     if (entries.length === 0) {
-      toast({ title: "Nothing to replace", description: "Enter replacement values first." });
+      toast({ title: "Nothing to replace", description: "Change the replacement values to differ from the original text." });
       return;
     }
     setIsSaving(true);
     try {
       const result = await batchReplace.mutateAsync({ sessionId, data: { replacements: entries } });
       setAppliedCount(result.applied);
+      setAppliedPerFile(result.perFile || null);
       toast({ title: "Replacements applied", description: `${result.applied} occurrence(s) updated.` });
       setOccurrences([]);
       setReplacements({});
@@ -402,7 +410,18 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
             <Alert>
               <Check className="h-4 w-4" />
               <AlertTitle>Replacements Applied</AlertTitle>
-              <AlertDescription>{appliedCount} occurrence(s) were updated. You can search again or continue to the next step.</AlertDescription>
+              <AlertDescription>
+                <p>{appliedCount} occurrence(s) were updated. You can search again or continue to the next step.</p>
+                {appliedPerFile && Object.keys(appliedPerFile).length > 0 && (
+                  <ul className="mt-2 text-xs space-y-0.5">
+                    {Object.entries(appliedPerFile).map(([file, count]) => (
+                      <li key={file} className="font-mono">
+                        {file}: {count} replacement{count !== 1 ? "s" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </AlertDescription>
             </Alert>
           )}
 
@@ -437,20 +456,19 @@ function StepConfigure({ sessionId, onNext, onBack }: { sessionId: string, onNex
                 {Object.entries(grouped).map(([file, occs]) => (
                   <div key={file} className="space-y-2">
                     <p className="text-xs font-mono text-muted-foreground bg-muted px-2 py-1 rounded break-all">{file}</p>
-                    {occs.map(occ => {
+                    {occs.map((occ) => {
                       const key = occKey(occ);
-                      const parts = occ.lineContent.split(occ.matchedText);
+                      const matchIdx = occ.lineContent.indexOf(occ.matchedText);
+                      const before = matchIdx >= 0 ? occ.lineContent.substring(0, matchIdx) : occ.lineContent;
+                      const after = matchIdx >= 0 ? occ.lineContent.substring(matchIdx + occ.matchedText.length) : "";
                       return (
                         <div key={key} className="ml-2 space-y-1 pb-2 border-b border-border last:border-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground shrink-0">Line {occ.lineNumber}:</span>
+                            <span className="text-xs text-muted-foreground shrink-0">L{occ.lineNumber}:C{occ.columnStart}:</span>
                             <p className="text-xs font-mono truncate max-w-full">
-                              {parts.map((part, i) => (
-                                <span key={i}>
-                                  {part}
-                                  {i < parts.length - 1 && <mark className="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">{occ.matchedText}</mark>}
-                                </span>
-                              ))}
+                              {before}
+                              {matchIdx >= 0 && <mark className="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">{occ.matchedText}</mark>}
+                              {after}
                             </p>
                           </div>
                           <Input

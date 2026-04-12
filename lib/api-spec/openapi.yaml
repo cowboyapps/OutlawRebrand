@@ -440,6 +440,8 @@ components:
           type: string
         lineNumber:
           type: integer
+        columnStart:
+          type: integer
         lineContent:
           type: string
         matchedText:
@@ -447,6 +449,7 @@ components:
       required:
         - file
         - lineNumber
+        - columnStart
         - lineContent
         - matchedText
 
@@ -470,6 +473,8 @@ components:
           type: string
         lineNumber:
           type: integer
+        columnStart:
+          type: integer
         oldText:
           type: string
         newText:
@@ -477,6 +482,7 @@ components:
       required:
         - file
         - lineNumber
+        - columnStart
         - oldText
         - newText
 
@@ -497,9 +503,14 @@ components:
           type: boolean
         applied:
           type: integer
+        perFile:
+          type: object
+          additionalProperties:
+            type: integer
       required:
         - success
         - applied
+        - perFile
 
     ImageInfo:
       type: object

@@ -9,6 +9,7 @@
 export interface KeywordOccurrence {
   file: string;
   lineNumber: number;
+  columnStart: number;
   lineContent: string;
   matchedText: string;
 }
