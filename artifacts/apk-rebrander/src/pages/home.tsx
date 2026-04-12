@@ -159,58 +159,58 @@ function StepUpload({ sessionId, setSessionId, status, error }: { sessionId: str
     }
 
     setUploading(true);
-    setProgress(10); // Fake initial progress
+    setProgress(0);
 
-    const formData = new FormData();
-    formData.append("apk", file);
-
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/apk/upload");
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        setProgress(Math.round((e.loaded / e.total) * 90));
+    try {
+      const initRes = await fetch("/api/apk/upload/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, fileSize: file.size }),
+      });
+      if (!initRes.ok) {
+        const err = await initRes.json().catch(() => ({ error: `Server returned ${initRes.status}` }));
+        throw new Error(err.error || "Failed to initialize upload");
       }
-    };
+      const { uploadId, totalChunks, chunkSize } = await initRes.json();
 
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          setSessionId(data.sessionId);
-          setProgress(100);
-          toast({ title: "Upload successful", description: "Decompiling APK..." });
-        } catch {
-          toast({ title: "Upload error", description: "Invalid server response", variant: "destructive" });
-          setUploading(false);
-          setProgress(0);
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
+
+        const chunkForm = new FormData();
+        chunkForm.append("uploadId", uploadId);
+        chunkForm.append("chunkIndex", String(i));
+        chunkForm.append("chunk", chunk, `chunk_${i}`);
+
+        const chunkRes = await fetch("/api/apk/upload/chunk", { method: "POST", body: chunkForm });
+        if (!chunkRes.ok) {
+          const err = await chunkRes.json().catch(() => ({ error: `Chunk ${i} failed (${chunkRes.status})` }));
+          throw new Error(err.error || `Chunk upload failed`);
         }
-      } else {
-        let detail = `Server returned ${xhr.status}`;
-        try {
-          const errData = JSON.parse(xhr.responseText);
-          if (errData.error) detail = errData.error;
-        } catch {}
-        toast({ title: "Upload error", description: detail, variant: "destructive" });
-        setUploading(false);
-        setProgress(0);
+        setProgress(Math.round(((i + 1) / totalChunks) * 90));
       }
-    };
 
-    xhr.onerror = () => {
-      toast({ title: "Upload error", description: "Network error — the file may be too large for the server. Try a smaller APK or check your connection.", variant: "destructive" });
+      const completeRes = await fetch("/api/apk/upload/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadId }),
+      });
+      if (!completeRes.ok) {
+        const err = await completeRes.json().catch(() => ({ error: `Server returned ${completeRes.status}` }));
+        throw new Error(err.error || "Failed to finalize upload");
+      }
+      const data = await completeRes.json();
+      setSessionId(data.sessionId);
+      setProgress(100);
+      toast({ title: "Upload successful", description: "Decompiling APK..." });
+    } catch (err) {
+      console.error(err);
+      const msg = err instanceof Error ? err.message : "Failed to upload APK";
+      toast({ title: "Upload error", description: msg, variant: "destructive" });
       setUploading(false);
       setProgress(0);
-    };
-
-    xhr.ontimeout = () => {
-      toast({ title: "Upload error", description: "Upload timed out. Try a smaller file or a faster connection.", variant: "destructive" });
-      setUploading(false);
-      setProgress(0);
-    };
-
-    xhr.timeout = 600000;
-    xhr.send(formData);
+    }
   };
 
   return (

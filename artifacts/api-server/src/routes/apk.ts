@@ -46,6 +46,8 @@ async function cleanupOldSessions(): Promise<void> {
   }
 }
 
+const CHUNK_SIZE = 20 * 1024 * 1024;
+
 const upload = multer({
   dest: path.join(WORK_DIR, "uploads"),
   limits: { fileSize: 500 * 1024 * 1024 },
@@ -58,9 +60,169 @@ const upload = multer({
   },
 });
 
+const chunkUpload = multer({
+  dest: path.join(WORK_DIR, "chunks"),
+  limits: { fileSize: CHUNK_SIZE + 1024 * 1024 },
+});
+
+interface PendingUpload {
+  fileName: string;
+  totalChunks: number;
+  totalSize: number;
+  receivedChunks: Set<number>;
+  chunkDir: string;
+  createdAt: number;
+}
+const pendingUploads = new Map<string, PendingUpload>();
+
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 }
+
+router.post("/apk/upload/init", async (req: Request, res: Response) => {
+  try {
+    const { fileName, fileSize } = req.body;
+    if (!fileName || !fileSize) {
+      res.status(400).json({ error: "fileName and fileSize are required" });
+      return;
+    }
+    if (!String(fileName).endsWith(".apk")) {
+      res.status(400).json({ error: "Only .apk files are allowed" });
+      return;
+    }
+    const totalSize = Number(fileSize);
+    if (totalSize > 500 * 1024 * 1024) {
+      res.status(400).json({ error: "File too large (max 500MB)" });
+      return;
+    }
+    const uploadId = generateId();
+    const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+    const chunkDir = path.join(WORK_DIR, "chunks", uploadId);
+    await fs.mkdir(chunkDir, { recursive: true });
+
+    pendingUploads.set(uploadId, {
+      fileName: String(fileName),
+      totalChunks,
+      totalSize,
+      receivedChunks: new Set(),
+      chunkDir,
+      createdAt: Date.now(),
+    });
+
+    for (const [id, pu] of pendingUploads) {
+      if (id !== uploadId && Date.now() - pu.createdAt > 30 * 60 * 1000) {
+        await fs.rm(pu.chunkDir, { recursive: true, force: true }).catch(() => {});
+        pendingUploads.delete(id);
+      }
+    }
+
+    res.json({ uploadId, totalChunks, chunkSize: CHUNK_SIZE });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Init failed";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post("/apk/upload/chunk", chunkUpload.single("chunk"), async (req: Request, res: Response) => {
+  try {
+    const uploadId = String(req.body.uploadId || "");
+    const chunkIndex = Number(req.body.chunkIndex);
+    const pending = pendingUploads.get(uploadId);
+    if (!pending) {
+      res.status(404).json({ error: "Upload session not found" });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: "No chunk data" });
+      return;
+    }
+    if (isNaN(chunkIndex) || chunkIndex < 0 || chunkIndex >= pending.totalChunks) {
+      res.status(400).json({ error: "Invalid chunk index" });
+      return;
+    }
+    const chunkPath = path.join(pending.chunkDir, `chunk_${String(chunkIndex).padStart(5, "0")}`);
+    await fs.rename(req.file.path, chunkPath);
+    pending.receivedChunks.add(chunkIndex);
+
+    res.json({
+      uploadId,
+      chunkIndex,
+      received: pending.receivedChunks.size,
+      total: pending.totalChunks,
+      complete: pending.receivedChunks.size === pending.totalChunks,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Chunk upload failed";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post("/apk/upload/complete", async (req: Request, res: Response) => {
+  try {
+    const uploadId = String(req.body.uploadId || "");
+    const pending = pendingUploads.get(uploadId);
+    if (!pending) {
+      res.status(404).json({ error: "Upload session not found" });
+      return;
+    }
+    if (pending.receivedChunks.size !== pending.totalChunks) {
+      res.status(400).json({
+        error: `Missing chunks: received ${pending.receivedChunks.size} of ${pending.totalChunks}`,
+      });
+      return;
+    }
+
+    const sessionId = generateId();
+    const sessionDir = path.join(WORK_DIR, "sessions", sessionId);
+    await fs.mkdir(sessionDir, { recursive: true });
+
+    const safeName = path.basename(pending.fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const apkPath = path.join(sessionDir, safeName);
+
+    const writeStream = (await import("fs")).createWriteStream(apkPath);
+    for (let i = 0; i < pending.totalChunks; i++) {
+      const chunkPath = path.join(pending.chunkDir, `chunk_${String(i).padStart(5, "0")}`);
+      const chunkData = await fs.readFile(chunkPath);
+      writeStream.write(chunkData);
+    }
+    await new Promise<void>((resolve, reject) => {
+      writeStream.end(() => resolve());
+      writeStream.on("error", reject);
+    });
+
+    await fs.rm(pending.chunkDir, { recursive: true, force: true }).catch(() => {});
+    pendingUploads.delete(uploadId);
+
+    const decompDir = path.join(sessionDir, "decompiled");
+    const outputPath = path.join(sessionDir, "output.apk");
+
+    const session: Session = {
+      id: sessionId,
+      status: "decompiling",
+      fileName: pending.fileName,
+      apkPath,
+      decompDir,
+      outputPath,
+    };
+    sessions.set(sessionId, session);
+    cleanupOldSessions().catch(() => {});
+
+    res.json({
+      sessionId,
+      status: "decompiling",
+      fileName: pending.fileName,
+    });
+
+    decompileApk(session).catch((err) => {
+      logger.error({ err, sessionId }, "Decompilation failed");
+      session.status = "error";
+      session.error = String(err.message || err);
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Upload completion failed";
+    res.status(500).json({ error: message });
+  }
+});
 
 router.post("/apk/upload", upload.single("apk"), async (req: Request, res: Response) => {
   try {
