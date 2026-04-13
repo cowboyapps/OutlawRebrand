@@ -1529,4 +1529,20 @@ router.get("/apk/:sessionId/download", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/apk/test-download/:filename", async (req: Request, res: Response) => {
+  const filename = String(req.params.filename);
+  const safeName = filename.replace(/[^a-zA-Z0-9_.-]/g, "");
+  const filePath = `/tmp/apk_compare/${safeName}`;
+  try {
+    const stat = await fs.stat(filePath);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+    res.setHeader("Content-Type", "application/vnd.android.package-archive");
+    res.setHeader("Content-Length", stat.size.toString());
+    const data = await fs.readFile(filePath);
+    res.send(data);
+  } catch {
+    res.status(404).json({ error: "File not found" });
+  }
+});
+
 export default router;
