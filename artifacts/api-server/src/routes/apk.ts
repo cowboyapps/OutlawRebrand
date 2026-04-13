@@ -1108,11 +1108,6 @@ async function fixErrorsInFiles(errors: EnumErrorInfo[]): Promise<number> {
         }
       );
 
-      newContent = newContent.replace(
-        /[ \t]*<item\s+name="[^"]*"[^>]*>\s*-?\d+\s*<\/item>\s*\n?/g,
-        () => { fixed++; return ""; }
-      );
-
       if (newContent !== content) {
         await fs.writeFile(filePath, newContent, "utf-8");
         logger.info(`Fixed resource errors in ${filePath}`);
@@ -1133,12 +1128,8 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
       let newContent = content;
 
       newContent = newContent.replace(
-        /[ \t]*<item\s+name="[^"]*"[^>]*>\s*-?\d+\s*<\/item>\s*\n?/g,
-        () => { fixed++; return ""; }
-      );
-      newContent = newContent.replace(
-        /[ \t]*<item\s+name="[^"]*"[^>]*>\s*(?:match_parent|wrap_content|fill_parent)\s*<\/item>\s*\n?/g,
-        () => { fixed++; return ""; }
+        /[ \t]*<item\s+name="([^"]*)"[^>]*>\s*(?:APKTOOL_MISSING_\w+|APKTOOL_DUMMY_\w+)\s*<\/item>\s*\n?/g,
+        (_m, name) => { fixed++; logger.info(`Removed APKTOOL placeholder: ${name}`); return ""; }
       );
 
       if (newContent !== content) {
@@ -1461,12 +1452,6 @@ async function recompileApk(session: Session): Promise<void> {
 
     session.progress = "Cleaning up APK...";
     await removeStrayRootDex(unsignedApk);
-
-    if (session.replacedImages.length > 0) {
-      session.progress = "Patching replaced images...";
-      await patchImagesInApk(unsignedApk, session.decompDir, session.replacedImages);
-      logger.info(`Patched ${session.replacedImages.length} replaced images in APK (bypassing AAPT crunching)`);
-    }
 
     session.progress = "Generating signing key...";
     try {
