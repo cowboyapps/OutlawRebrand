@@ -276,69 +276,6 @@ router.post("/apk/upload", upload.single("apk"), async (req: Request, res: Respo
   }
 });
 
-router.post("/apk/upload/from-path", async (req: Request, res: Response) => {
-  try {
-    const internalKey = req.headers["x-internal-key"] as string;
-    if (internalKey !== (process.env.INTERNAL_API_KEY || "__internal__")) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-
-    const { filePath, fileName } = req.body;
-    if (!filePath) {
-      res.status(400).json({ error: "filePath is required" });
-      return;
-    }
-
-    const BASE_APK_DIR = "/tmp/apk-rebrander/base-apks";
-    const resolvedPath = path.resolve(filePath);
-    if (!resolvedPath.startsWith(BASE_APK_DIR)) {
-      res.status(403).json({ error: "Access denied: path outside base APK directory" });
-      return;
-    }
-
-    const fsSync = await import("fs");
-    if (!fsSync.existsSync(filePath)) {
-      res.status(404).json({ error: "Base APK file not found on disk" });
-      return;
-    }
-
-    const sessionId = generateId();
-    const sessionDir = path.join(WORK_DIR, "sessions", sessionId);
-    await fs.mkdir(sessionDir, { recursive: true });
-
-    const safeName = path.basename(fileName || filePath).replace(/[^a-zA-Z0-9._-]/g, "_");
-    const apkPath = path.join(sessionDir, safeName);
-    await fs.copyFile(filePath, apkPath);
-
-    const decompDir = path.join(sessionDir, "decompiled");
-    const outputPath = path.join(sessionDir, "output.apk");
-
-    const session: Session = {
-      id: sessionId,
-      status: "decompiling",
-      fileName: safeName,
-      apkPath,
-      decompDir,
-      outputPath,
-      replacedImages: [],
-    };
-    sessions.set(sessionId, session);
-    cleanupOldSessions().catch(() => {});
-
-    res.json({ sessionId, status: "decompiling", fileName: safeName });
-
-    decompileApk(session).catch((err) => {
-      logger.error({ err, sessionId }, "Decompilation failed (from-path)");
-      session.status = "error";
-      session.error = String(err.message || err);
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Upload from path failed";
-    res.status(500).json({ error: message });
-  }
-});
-
 async function decompileApk(session: Session): Promise<void> {
   session.progress = "Decompiling APK...";
   try {
@@ -802,23 +739,13 @@ router.put("/apk/:sessionId/url/replace", async (req: Request, res: Response) =>
   try {
     let applied = 0;
     const perFile: Record<string, number> = {};
-    const skipped: string[] = [];
     const fileEdits = new Map<string, Array<{ lineNumber: number; columnStart: number; oldText: string; newText: string }>>();
 
     for (const entry of replacements) {
-      if (!entry.file || !entry.oldText || !entry.newText || entry.oldText === entry.newText) {
-        skipped.push(`Skipped entry: missing fields or same text`);
-        continue;
-      }
-      if (typeof entry.columnStart !== "number" || entry.columnStart < 0) {
-        skipped.push(`Skipped entry in ${entry.file}: invalid columnStart=${entry.columnStart}`);
-        continue;
-      }
+      if (!entry.file || !entry.oldText || !entry.newText || entry.oldText === entry.newText) continue;
+      if (typeof entry.columnStart !== "number" || entry.columnStart < 0) continue;
       const resolvedPath = path.resolve(session.decompDir, entry.file);
-      if (!resolvedPath.startsWith(session.decompDir + path.sep)) {
-        skipped.push(`Skipped entry: path traversal blocked for ${entry.file}`);
-        continue;
-      }
+      if (!resolvedPath.startsWith(session.decompDir + path.sep)) continue;
       const existing = fileEdits.get(entry.file) || [];
       existing.push({ lineNumber: entry.lineNumber, columnStart: entry.columnStart, oldText: entry.oldText, newText: entry.newText });
       fileEdits.set(entry.file, existing);
@@ -837,23 +764,12 @@ router.put("/apk/:sessionId/url/replace", async (req: Request, res: Response) =>
         let fileApplied = 0;
         for (const edit of sortedEdits) {
           const idx = edit.lineNumber - 1;
-          if (idx < 0 || idx >= lines.length) {
-            skipped.push(`${relFile}:${edit.lineNumber} - line out of range (max ${lines.length})`);
-            continue;
-          }
+          if (idx < 0 || idx >= lines.length) continue;
           const line = lines[idx];
           const segment = line.substring(edit.columnStart, edit.columnStart + edit.oldText.length);
           if (segment === edit.oldText) {
             lines[idx] = line.substring(0, edit.columnStart) + edit.newText + line.substring(edit.columnStart + edit.oldText.length);
             fileApplied++;
-          } else {
-            const altPos = line.indexOf(edit.oldText);
-            if (altPos !== -1) {
-              lines[idx] = line.substring(0, altPos) + edit.newText + line.substring(altPos + edit.oldText.length);
-              fileApplied++;
-            } else {
-              skipped.push(`${relFile}:${edit.lineNumber} - text "${edit.oldText}" not found at col ${edit.columnStart} (found "${segment.substring(0, 30)}")`);
-            }
           }
         }
         if (fileApplied > 0) {
@@ -861,18 +777,13 @@ router.put("/apk/:sessionId/url/replace", async (req: Request, res: Response) =>
           applied += fileApplied;
           perFile[relFile] = fileApplied;
         }
-      } catch (fileErr) {
-        const msg = fileErr instanceof Error ? fileErr.message : "unknown error";
-        skipped.push(`${relFile}: file read/write error - ${msg}`);
+      } catch {
+        // skip inaccessible files
       }
     }
 
-    if (skipped.length > 0) {
-      console.log("Batch replace skipped entries:", skipped);
-    }
     res.json({ success: true, applied, perFile });
   } catch (err: unknown) {
-    console.error("Batch replace error:", err);
     const message = err instanceof Error ? err.message : "Replacement failed";
     res.status(500).json({ error: message });
   }

@@ -3,7 +3,6 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { authMiddleware } from "./middleware/auth";
 import path from "path";
 import fs from "fs";
 
@@ -29,10 +28,8 @@ app.use(
   }),
 );
 app.use(cors());
-app.use("/api/credits/webhook", express.raw({ type: "application/json" }));
 app.use("/api", express.json({ limit: "10mb" }));
 app.use("/api", express.urlencoded({ extended: true, limit: "10mb" }));
-app.use("/api", authMiddleware);
 
 app.use("/api", router);
 

@@ -10,18 +10,12 @@
   },
   "private": true,
   "devDependencies": {
-    "@types/bcryptjs": "2.4.6",
-    "prettier": "^3.8.1",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "prettier": "^3.8.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "sharp"
     ]
-  },
-  "dependencies": {
-    "bcryptjs": "3.0.2",
-    "stripe": "20.0.0",
-    "stripe-replit-sync": "1.0.0"
   }
 }
