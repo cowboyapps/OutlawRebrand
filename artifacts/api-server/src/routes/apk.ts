@@ -1224,27 +1224,20 @@ async function fixNumericResourceNames(decompDir: string): Promise<number> {
       for (const d of resDirs) {
         if (!d.isDirectory()) continue;
         const subDir = path.join(resDir, d.name);
-        const oldFile = path.join(subDir, `${name}.xml`);
-        const newFile = path.join(subDir, `_${name}.xml`);
         try {
-          await fs.access(oldFile);
-          await fs.rename(oldFile, newFile);
-          fixed++;
-          logger.info(`Renamed ${d.name}/${name}.xml → _${name}.xml`);
-        } catch {}
-        const oldPng = path.join(subDir, `${name}.png`);
-        const newPng = path.join(subDir, `_${name}.png`);
-        try {
-          await fs.access(oldPng);
-          await fs.rename(oldPng, newPng);
-          fixed++;
-        } catch {}
-        const old9 = path.join(subDir, `${name}.9.png`);
-        const new9 = path.join(subDir, `_${name}.9.png`);
-        try {
-          await fs.access(old9);
-          await fs.rename(old9, new9);
-          fixed++;
+          const files = await fs.readdir(subDir);
+          for (const f of files) {
+            const dotIdx = f.indexOf(".");
+            const baseName = dotIdx >= 0 ? f.substring(0, dotIdx) : f;
+            if (baseName === name) {
+              const ext = dotIdx >= 0 ? f.substring(dotIdx) : "";
+              const oldPath = path.join(subDir, f);
+              const newPath = path.join(subDir, `_${name}${ext}`);
+              await fs.rename(oldPath, newPath);
+              fixed++;
+              logger.info(`Renamed ${d.name}/${f} → _${name}${ext}`);
+            }
+          }
         } catch {}
       }
     } catch {}
