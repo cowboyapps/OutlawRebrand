@@ -32,9 +32,9 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a full-stack S
 ## SaaS Features
 
 - **Auth**: Register/login/logout via `/api/auth/*` routes; sessions stored in DB with 30-day expiry
-- **Admin Panel**: Upload base APKs, manage credit packages/prices, view users/jobs via `/api/admin/*` routes
+- **Admin Panel**: Upload base APKs, manage credit packages/prices, view users/jobs via `/api/admin/*` routes; admin selects which images customers must replace (with labels) via image selector after decompile
 - **Credit System**: Buy credits via Stripe checkout, credits deducted only after successful APK build
-- **Rebrand Flow**: Select base APK -> configure name/keywords -> replace images -> build -> download (uses credits)
+- **Rebrand Flow**: Select base APK -> configure name/keywords -> upload brand images (only admin-selected images shown with labels) -> build -> download (uses credits)
 - **Stripe Integration**: Replit connector for credentials, checkout sessions for credit purchases, webhook for fulfillment
 
 ## Database Tables

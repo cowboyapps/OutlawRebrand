@@ -7,7 +7,27 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Upload, Trash2, Users, Package, CreditCard, Briefcase, Plus } from "lucide-react";
+import { Loader2, ArrowLeft, Upload, Trash2, Users, Package, CreditCard, Briefcase, Plus, Image as ImageIcon, CheckSquare, Square, Edit2, Search } from "lucide-react";
+
+interface ImageEntry {
+  path: string;
+  name: string;
+  directory: string;
+  size: number;
+  type: string;
+  width?: number;
+  height?: number;
+  thumbnail?: string;
+}
+
+interface SelectedImage {
+  path: string;
+  label: string;
+  width?: number;
+  height?: number;
+  name: string;
+  directory: string;
+}
 
 interface BaseApk {
   id: number;
@@ -144,6 +164,8 @@ function ApksTab({ apks, onRefresh }: { apks: BaseApk[]; onRefresh: () => void }
   const [creditCost, setCreditCost] = useState("1");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [configuringApk, setConfiguringApk] = useState<BaseApk | null>(null);
+
   const handleUpload = async () => {
     if (!fileRef.current?.files?.[0] || !name || !slug) {
       toast({ title: "Error", description: "Name, slug, and APK file are required", variant: "destructive" });
@@ -167,13 +189,14 @@ function ApksTab({ apks, onRefresh }: { apks: BaseApk[]; onRefresh: () => void }
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      toast({ title: "Success", description: `${data.name} uploaded` });
+      toast({ title: "Success", description: `${data.name} uploaded. Now select the images customers will replace.` });
       setShowUpload(false);
       setName("");
       setSlug("");
       setDescription("");
       setCreditCost("1");
       onRefresh();
+      setConfiguringApk(data);
     } catch (err) {
       toast({ title: "Error", description: err instanceof Error ? err.message : "Upload failed", variant: "destructive" });
     } finally {
@@ -200,6 +223,16 @@ function ApksTab({ apks, onRefresh }: { apks: BaseApk[]; onRefresh: () => void }
       toast({ title: "Error", variant: "destructive" });
     }
   };
+
+  if (configuringApk) {
+    return (
+      <ImageSelector
+        apk={configuringApk}
+        onDone={() => { setConfiguringApk(null); onRefresh(); }}
+        onCancel={() => setConfiguringApk(null)}
+      />
+    );
+  }
 
   return (
     <div>
@@ -237,36 +270,319 @@ function ApksTab({ apks, onRefresh }: { apks: BaseApk[]; onRefresh: () => void }
             </div>
             <Button onClick={handleUpload} disabled={uploading} className="w-full">
               {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-              Upload
+              Upload & Configure Images
             </Button>
           </CardContent>
         </Card>
       )}
 
       <div className="space-y-3">
-        {apks.map(apk => (
-          <Card key={apk.id}>
-            <CardContent className="py-4 flex items-center justify-between">
-              <div>
-                <p className="font-medium">{apk.name} <span className="text-xs text-muted-foreground">({apk.slug})</span></p>
-                <p className="text-sm text-muted-foreground">
-                  {apk.packageName || "N/A"} - {apk.creditCost} credit{apk.creditCost !== 1 ? "s" : ""} - {apk.isActive ? "Active" : "Inactive"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleToggle(apk.id, apk.isActive)}>
-                  {apk.isActive ? "Disable" : "Enable"}
-                </Button>
-                <Button variant="destructive" size="sm" onClick={() => handleDelete(apk.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {apks.map(apk => {
+          let imageCount = 0;
+          try { if (apk.imageLabels) imageCount = JSON.parse(apk.imageLabels).length; } catch {};
+          return (
+            <Card key={apk.id}>
+              <CardContent className="py-4 flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{apk.name} <span className="text-xs text-muted-foreground">({apk.slug})</span></p>
+                  <p className="text-sm text-muted-foreground">
+                    {apk.packageName || "N/A"} - {apk.creditCost} credit{apk.creditCost !== 1 ? "s" : ""} - {apk.isActive ? "Active" : "Inactive"}
+                    {imageCount > 0 && <> - {imageCount} customer image{imageCount !== 1 ? "s" : ""}</>}
+                    {imageCount === 0 && <span className="text-yellow-600"> - No customer images configured</span>}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setConfiguringApk(apk)}>
+                    <ImageIcon className="h-4 w-4 mr-1" /> Images
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleToggle(apk.id, apk.isActive)}>
+                    {apk.isActive ? "Disable" : "Enable"}
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => handleDelete(apk.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
         {apks.length === 0 && (
           <Card><CardContent className="py-8 text-center text-muted-foreground">No base APKs uploaded yet.</CardContent></Card>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ImageSelector({ apk, onDone, onCancel }: { apk: BaseApk; onDone: () => void; onCancel: () => void }) {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [decompiling, setDecompiling] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [images, setImages] = useState<ImageEntry[]>([]);
+  const [selected, setSelected] = useState<SelectedImage[]>(() => {
+    try {
+      return apk.imageLabels ? JSON.parse(apk.imageLabels) : [];
+    } catch { return []; }
+  });
+  const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [hideXml, setHideXml] = useState(true);
+
+  useEffect(() => {
+    startDecompile();
+  }, []);
+
+  const startDecompile = async () => {
+    setDecompiling(true);
+    try {
+      const res = await apiFetch(`/admin/base-apks/${apk.id}/decompile`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSessionId(data.sessionId);
+      pollForReady(data.sessionId);
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Decompile failed", variant: "destructive" });
+      setDecompiling(false);
+    }
+  };
+
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const pollForReady = async (sid: string) => {
+    const poll = async () => {
+      try {
+        const res = await fetch(`${BASE}/api/apk/${sid}/status`, {
+          headers: { "x-session-id": localStorage.getItem("sessionId") || "" },
+        });
+        const data = await res.json();
+        if (data.status === "ready") {
+          setDecompiling(false);
+          loadImages(sid);
+        } else if (data.status === "error") {
+          setDecompiling(false);
+          toast({ title: "Error", description: data.error || "Decompilation failed", variant: "destructive" });
+        } else {
+          setTimeout(poll, 1500);
+        }
+      } catch {
+        setTimeout(poll, 2000);
+      }
+    };
+    poll();
+  };
+
+  const loadImages = async (sid: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/apk/${sid}/images`, {
+        headers: { "x-session-id": localStorage.getItem("sessionId") || "" },
+      });
+      const data = await res.json();
+      setImages(data.images || []);
+    } catch {
+      toast({ title: "Error", description: "Failed to load images", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isSelected = (imgPath: string) => selected.some(s => s.path === imgPath);
+
+  const toggleImage = (img: ImageEntry) => {
+    if (isSelected(img.path)) {
+      setSelected(prev => prev.filter(s => s.path !== img.path));
+    } else {
+      const autoLabel = guessLabel(img);
+      setSelected(prev => [...prev, {
+        path: img.path,
+        label: autoLabel,
+        width: img.width,
+        height: img.height,
+        name: img.name,
+        directory: img.directory,
+      }]);
+    }
+  };
+
+  const updateLabel = (imgPath: string, label: string) => {
+    setSelected(prev => prev.map(s => s.path === imgPath ? { ...s, label } : s));
+  };
+
+  const guessLabel = (img: ImageEntry): string => {
+    const p = (img.path + img.name).toLowerCase();
+    if (p.includes("icon") && p.includes("round")) return "Round Icon";
+    if (p.includes("icon")) return "App Icon";
+    if (p.includes("launcher") && p.includes("round")) return "Round Launcher";
+    if (p.includes("launcher")) return "Launcher";
+    if (p.includes("banner")) return "Banner";
+    if (p.includes("logo")) return "Logo";
+    if (p.includes("splash")) return "Splash Screen";
+    if (p.includes("background") || p.includes("bg")) return "Background";
+    return img.name.replace(/\.\w+$/, "");
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await apiFetch(`/admin/base-apks/${apk.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ imageLabels: JSON.stringify(selected) }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      toast({ title: "Saved", description: `${selected.length} customer image${selected.length !== 1 ? "s" : ""} configured.` });
+      onDone();
+    } catch {
+      toast({ title: "Error", description: "Failed to save image selections", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filteredImages = images.filter(img => {
+    if (hideXml && img.type === "xml") return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return img.name.toLowerCase().includes(q) || img.path.toLowerCase().includes(q) || img.directory.toLowerCase().includes(q);
+  });
+
+  if (decompiling) {
+    return (
+      <Card>
+        <CardContent className="py-12 flex flex-col items-center gap-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-lg font-medium">Decompiling {apk.name}...</p>
+          <p className="text-sm text-muted-foreground">Extracting images from the APK. This may take a minute.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-12 flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading images...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-semibold">Select Customer Images: {apk.name}</h2>
+          <p className="text-sm text-muted-foreground">Click images to select which ones customers will replace. Give each a descriptive label.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            Save ({selected.length} selected)
+          </Button>
+        </div>
+      </div>
+
+      {selected.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Selected Images ({selected.length})</CardTitle>
+            <CardDescription>These images will be shown to customers for replacement. Edit the labels to make them descriptive.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {selected.map(sel => {
+                const img = images.find(i => i.path === sel.path);
+                return (
+                  <div key={sel.path} className="flex items-center gap-3 p-2 rounded-md border bg-muted/30">
+                    <div className="w-12 h-12 shrink-0 flex items-center justify-center bg-background rounded border">
+                      {img?.thumbnail ? (
+                        <img src={img.thumbnail} alt={sel.name} className="max-h-full max-w-full object-contain" />
+                      ) : (
+                        <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <Input
+                        value={sel.label}
+                        onChange={e => updateLabel(sel.path, e.target.value)}
+                        className="h-8 text-sm"
+                        placeholder="Label for customer..."
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                        {sel.path} {sel.width && sel.height ? `(${sel.width}x${sel.height})` : ""}
+                      </p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setSelected(prev => prev.filter(s => s.path !== sel.path))}>
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="mb-4 flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search images by name, path, or folder..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Button variant={hideXml ? "default" : "outline"} size="sm" onClick={() => setHideXml(!hideXml)} className="shrink-0 h-9">
+          {hideXml ? "Show XML" : "Hide XML"}
+        </Button>
+      </div>
+
+      <p className="text-sm text-muted-foreground mb-3">
+        Showing {filteredImages.length} of {images.length} images - {selected.length} selected
+      </p>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+        {filteredImages.map(img => {
+          const sel = isSelected(img.path);
+          return (
+            <div
+              key={img.path}
+              className={`relative rounded-md border overflow-hidden bg-muted/30 cursor-pointer transition-all flex flex-col ${
+                sel ? "border-primary ring-2 ring-primary/30 bg-primary/5" : "border-border hover:border-muted-foreground/50"
+              }`}
+              onClick={() => toggleImage(img)}
+            >
+              <div className="absolute top-1.5 left-1.5 z-10">
+                {sel ? (
+                  <CheckSquare className="h-5 w-5 text-primary drop-shadow" />
+                ) : (
+                  <Square className="h-5 w-5 text-muted-foreground/50" />
+                )}
+              </div>
+              <div className="h-20 sm:h-24 flex items-center justify-center p-2">
+                {img.type === "xml" ? (
+                  <div className="text-muted-foreground flex flex-col items-center">
+                    <ImageIcon className="h-6 w-6 opacity-50" />
+                    <span className="text-[9px] font-mono mt-1">XML</span>
+                  </div>
+                ) : img.thumbnail ? (
+                  <img src={img.thumbnail} alt={img.name} className="max-h-full max-w-full object-contain" />
+                ) : (
+                  <ImageIcon className="h-6 w-6 text-muted-foreground opacity-50" />
+                )}
+              </div>
+              <div className="p-1.5 text-[10px] bg-background/90 border-t mt-auto">
+                <div className="font-medium truncate">{img.name}</div>
+                <div className="text-muted-foreground truncate">{img.directory}</div>
+                {img.width && img.height && <div className="text-muted-foreground">{img.width}x{img.height}</div>}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

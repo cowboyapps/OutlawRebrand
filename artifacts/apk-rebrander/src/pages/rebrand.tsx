@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowRight, ArrowLeft, Check, Download, AlertCircle, Package, Image as ImageIcon, Settings, Search, Circle, FileArchive } from "lucide-react";
+import { Loader2, ArrowRight, ArrowLeft, Check, Download, AlertCircle, Package, Image as ImageIcon, Settings, Search, Circle, FileArchive, Upload } from "lucide-react";
 
 import {
   useGetSessionStatus,
@@ -18,11 +18,18 @@ import {
   useUpdateAppName,
   useSearchKeyword,
   useBatchReplace,
-  useListImages,
-  getListImagesQueryKey
 } from "@workspace/api-client-react";
-import type { ImageInfo, SessionStatus, KeywordOccurrence } from "@workspace/api-client-react";
+import type { SessionStatus, KeywordOccurrence } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+
+interface SelectedImage {
+  path: string;
+  label: string;
+  width?: number;
+  height?: number;
+  name: string;
+  directory: string;
+}
 
 const STEPS = [
   { id: 1, name: "Prepare", icon: FileArchive },
@@ -102,6 +109,10 @@ export default function RebrandPage() {
       setStarting(false);
     }
   };
+
+  const requiredImages: SelectedImage[] = baseApk?.imageLabels ? (() => {
+    try { return JSON.parse(baseApk.imageLabels); } catch { return []; }
+  })() : [];
 
   if (!baseApk) {
     return (
@@ -191,7 +202,12 @@ export default function RebrandPage() {
         )}
 
         {currentStep === 3 && sessionId && (
-          <StepImages sessionId={sessionId} onNext={() => setCurrentStep(4)} onBack={() => setCurrentStep(2)} />
+          <StepImages
+            sessionId={sessionId}
+            requiredImages={requiredImages}
+            onNext={() => setCurrentStep(4)}
+            onBack={() => setCurrentStep(2)}
+          />
         )}
 
         {currentStep === 4 && sessionId && (
@@ -389,52 +405,40 @@ function StepConfigure({ sessionId, appName: initialName, onNext, onBack }: { se
   );
 }
 
-function StepImages({ sessionId, onNext, onBack }: { sessionId: string; onNext: () => void; onBack: () => void }) {
+function StepImages({ sessionId, requiredImages, onNext, onBack }: {
+  sessionId: string;
+  requiredImages: SelectedImage[];
+  onNext: () => void;
+  onBack: () => void;
+}) {
   const { toast } = useToast();
-  const { data: imageList, isLoading } = useListImages(sessionId, {
-    query: { enabled: !!sessionId, queryKey: getListImagesQueryKey(sessionId) },
-  });
-
+  const [uploadedMap, setUploadedMap] = useState<Map<string, string>>(new Map());
   const [replacingPath, setReplacingPath] = useState<string | null>(null);
-  const [roundForReplace, setRoundForReplace] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [hideXml, setHideXml] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [replacedImages, setReplacedImages] = useState<Map<string, string>>(new Map());
+  const [currentUploadPath, setCurrentUploadPath] = useState<string | null>(null);
 
-  const filteredImages = imageList?.images?.filter((img: ImageInfo) => {
-    if (hideXml && img.type === "xml") return false;
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return img.name.toLowerCase().includes(q) || img.path.toLowerCase().includes(q) || img.directory.toLowerCase().includes(q);
-  });
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-  const handleImageClick = (imgPath: string, isXml: boolean) => {
-    if (isXml) return;
-    setSelectedImage(selectedImage === imgPath ? null : imgPath);
-  };
-
-  const startReplace = (imgPath: string, round: boolean) => {
-    setReplacingPath(imgPath);
-    setRoundForReplace(round);
+  const handleUploadClick = (imgPath: string) => {
+    setCurrentUploadPath(imgPath);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
-      fileInputRef.current.accept = "image/*";
       fileInputRef.current.click();
     }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !replacingPath) return;
+    if (!file || !currentUploadPath) return;
 
+    setReplacingPath(currentUploadPath);
     const formData = new FormData();
     formData.append("image", file);
-    formData.append("targetPath", replacingPath);
-    if (roundForReplace) formData.append("makeRound", "true");
+    formData.append("targetPath", currentUploadPath);
 
-    const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const isRound = currentUploadPath.toLowerCase().includes("round");
+    if (isRound) formData.append("makeRound", "true");
+
     try {
       const res = await fetch(`${BASE}/api/apk/${sessionId}/image/replace`, {
         method: "POST",
@@ -443,88 +447,104 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string; onNext: 
       });
       const result = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(result.error || "Failed to replace image");
-      if (result.thumbnail) setReplacedImages(prev => new Map(prev).set(replacingPath, result.thumbnail));
-      toast({ title: "Success", description: "Image replaced." });
-      setSelectedImage(null);
+      if (result.thumbnail) {
+        setUploadedMap(prev => new Map(prev).set(currentUploadPath, result.thumbnail));
+      } else {
+        setUploadedMap(prev => new Map(prev).set(currentUploadPath, "done"));
+      }
+      const img = requiredImages.find(i => i.path === currentUploadPath);
+      toast({ title: "Uploaded", description: `${img?.label || "Image"} replaced successfully.` });
     } catch (err) {
-      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed", variant: "destructive" });
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Upload failed", variant: "destructive" });
     } finally {
       setReplacingPath(null);
-      setRoundForReplace(false);
+      setCurrentUploadPath(null);
     }
   };
 
-  if (isLoading) {
-    return <Card><CardContent className="py-12 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></CardContent></Card>;
+  const uploadedCount = uploadedMap.size;
+  const totalRequired = requiredImages.length;
+
+  if (requiredImages.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Brand Images</CardTitle>
+          <CardDescription>No specific images have been configured for this app. You can proceed to build.</CardDescription>
+        </CardHeader>
+        <CardFooter className="flex justify-between">
+          <Button variant="outline" onClick={onBack}>Back</Button>
+          <Button onClick={onNext}>Continue to Build <ArrowRight className="ml-2 h-4 w-4" /></Button>
+        </CardFooter>
+      </Card>
+    );
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Brand Images</CardTitle>
-        <CardDescription>Click any image to replace it with your own branding.</CardDescription>
+        <CardTitle>Upload Your Brand Images</CardTitle>
+        <CardDescription>
+          Upload your custom images below. Each image will be resized automatically to match the required dimensions.
+          {uploadedCount > 0 && (
+            <span className="block mt-1 text-green-600 font-medium">
+              {uploadedCount} of {totalRequired} image{totalRequired !== 1 ? "s" : ""} uploaded
+            </span>
+          )}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-        <div className="mb-4 flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search images..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9" />
-          </div>
-          <Button variant={hideXml ? "default" : "outline"} size="sm" onClick={() => setHideXml(!hideXml)} className="shrink-0 h-9">
-            {hideXml ? "Show XML" : "Hide XML"}
-          </Button>
-        </div>
 
-        {replacedImages.size > 0 && (
-          <div className="text-sm text-green-600 font-medium mb-3 flex items-center gap-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
-            {replacedImages.size} image{replacedImages.size !== 1 ? "s" : ""} replaced
-          </div>
-        )}
+        <div className="space-y-3">
+          {requiredImages.map((img) => {
+            const isUploaded = uploadedMap.has(img.path);
+            const thumbnailSrc = uploadedMap.get(img.path);
+            const isReplacing = replacingPath === img.path;
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filteredImages?.map((img: ImageInfo) => {
-            const isXml = img.type === "xml";
-            const isSelected = selectedImage === img.path;
-            const isRoundIcon = img.name.includes("round") || img.directory.includes("round");
-            const isReplaced = replacedImages.has(img.path);
-            const thumbSrc = replacedImages.get(img.path) || img.thumbnail;
             return (
-              <div key={img.path} className={`relative group rounded-md border overflow-hidden bg-muted/30 cursor-pointer hover:border-primary transition-colors flex flex-col ${isReplaced ? "border-green-500 ring-2 ring-green-500/20" : isSelected ? "border-primary ring-2 ring-primary/20" : "border-border"}`} onClick={() => handleImageClick(img.path, isXml)}>
-                {isReplaced && <div className="absolute top-1 right-1 z-10 bg-green-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow">REPLACED</div>}
-                <div className="h-24 sm:h-32 flex items-center justify-center p-2">
-                  {isXml ? (
-                    <div className="text-muted-foreground flex flex-col items-center">
-                      <ImageIcon className="h-8 w-8 opacity-50 mb-2" />
-                      <span className="text-xs font-mono">XML</span>
-                    </div>
-                  ) : thumbSrc ? (
-                    <img src={thumbSrc} alt={img.name} className={`max-h-full max-w-full object-contain ${isRoundIcon ? "rounded-full" : ""}`} />
+              <div
+                key={img.path}
+                className={`flex items-center gap-4 p-4 rounded-lg border transition-colors ${
+                  isUploaded ? "border-green-500 bg-green-50 dark:bg-green-950/20" : "border-border bg-muted/20 hover:bg-muted/40"
+                }`}
+              >
+                <div className="w-16 h-16 shrink-0 flex items-center justify-center bg-background rounded-lg border overflow-hidden">
+                  {isReplacing ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  ) : thumbnailSrc && thumbnailSrc !== "done" ? (
+                    <img src={thumbnailSrc} alt={img.label} className="max-h-full max-w-full object-contain" />
+                  ) : isUploaded ? (
+                    <Check className="h-6 w-6 text-green-600" />
                   ) : (
-                    <ImageIcon className="h-8 w-8 text-muted-foreground opacity-50" />
+                    <ImageIcon className="h-6 w-6 text-muted-foreground" />
                   )}
                 </div>
-                <div className="p-1.5 text-[10px] bg-background/90 border-t mt-auto">
-                  <div className="font-medium truncate">{img.name}</div>
-                  <div className="text-muted-foreground truncate">{img.directory}</div>
-                  {img.width && img.height && <div className="text-muted-foreground">{img.width}x{img.height}</div>}
+
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm">{img.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {img.width && img.height ? `${img.width} x ${img.height} px` : "Size will be matched automatically"}
+                    <span className="mx-1.5">-</span>
+                    <span className="font-mono">{img.name}</span>
+                  </p>
                 </div>
 
-                {replacingPath === img.path && (
-                  <div className="absolute inset-0 bg-background/80 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-                )}
-
-                {!isXml && isSelected && (
-                  <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center gap-2" onClick={e => e.stopPropagation()}>
-                    <Button variant="secondary" size="sm" className="w-32" onClick={() => startReplace(img.path, false)}>Replace</Button>
-                    <Button variant="outline" size="sm" className="w-32" onClick={() => startReplace(img.path, true)}>
-                      <Circle className="mr-2 h-3 w-3" />
-                      Replace Round
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedImage(null)}>Cancel</Button>
-                  </div>
-                )}
+                <Button
+                  variant={isUploaded ? "outline" : "default"}
+                  size="sm"
+                  onClick={() => handleUploadClick(img.path)}
+                  disabled={isReplacing}
+                  className="shrink-0"
+                >
+                  {isReplacing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : isUploaded ? (
+                    <>Replace</>
+                  ) : (
+                    <><Upload className="h-4 w-4 mr-1" /> Upload</>
+                  )}
+                </Button>
               </div>
             );
           })}
@@ -532,7 +552,12 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string; onNext: 
       </CardContent>
       <CardFooter className="flex justify-between">
         <Button variant="outline" onClick={onBack}>Back</Button>
-        <Button onClick={onNext}>Continue to Build <ArrowRight className="ml-2 h-4 w-4" /></Button>
+        <Button onClick={onNext} disabled={totalRequired > 0 && uploadedCount === 0}>
+          {totalRequired > 0 && uploadedCount === 0
+            ? "Upload at least one image to continue"
+            : <>Continue to Build <ArrowRight className="ml-2 h-4 w-4" /></>
+          }
+        </Button>
       </CardFooter>
     </Card>
   );

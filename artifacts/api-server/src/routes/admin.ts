@@ -72,6 +72,40 @@ router.post("/base-apks", upload.single("apk"), async (req: Request, res: Respon
   }
 });
 
+router.post("/base-apks/:id/decompile", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const apks = await db.select().from(baseApksTable).where(eq(baseApksTable.id, id)).limit(1);
+    if (apks.length === 0) {
+      res.status(404).json({ error: "Base APK not found" });
+      return;
+    }
+
+    const apk = apks[0];
+    const port = process.env.PORT || 8080;
+    const initRes = await fetch(`http://localhost:${port}/api/apk/upload/from-path`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-key": process.env.INTERNAL_API_KEY || "__internal__",
+      },
+      body: JSON.stringify({ filePath: apk.filePath, fileName: `${apk.slug}.apk` }),
+    });
+
+    if (!initRes.ok) {
+      const err = await initRes.json().catch(() => ({}));
+      res.status(500).json({ error: err.error || "Failed to decompile" });
+      return;
+    }
+
+    const { sessionId } = await initRes.json();
+    res.json({ sessionId });
+  } catch (err) {
+    console.error("Decompile error:", err);
+    res.status(500).json({ error: "Failed to start decompilation" });
+  }
+});
+
 router.get("/base-apks", async (_req: Request, res: Response) => {
   const apks = await db.select().from(baseApksTable).orderBy(desc(baseApksTable.createdAt));
   res.json(apks);
@@ -86,7 +120,20 @@ router.put("/base-apks/:id", async (req: Request, res: Response) => {
     if (description !== undefined) updates.description = description;
     if (creditCost !== undefined) updates.creditCost = parseInt(creditCost);
     if (isActive !== undefined) updates.isActive = isActive;
-    if (imageLabels !== undefined) updates.imageLabels = imageLabels;
+    if (imageLabels !== undefined) {
+      try {
+        const parsed = typeof imageLabels === "string" ? JSON.parse(imageLabels) : imageLabels;
+        if (!Array.isArray(parsed)) throw new Error("imageLabels must be an array");
+        for (const item of parsed) {
+          if (!item.path || typeof item.path !== "string") throw new Error("Each image needs a path");
+          if (!item.label || typeof item.label !== "string") throw new Error("Each image needs a label");
+        }
+        updates.imageLabels = typeof imageLabels === "string" ? imageLabels : JSON.stringify(imageLabels);
+      } catch (err) {
+        res.status(400).json({ error: err instanceof Error ? err.message : "Invalid imageLabels format" });
+        return;
+      }
+    }
 
     const [apk] = await db.update(baseApksTable).set(updates).where(eq(baseApksTable.id, id)).returning();
     if (!apk) {
