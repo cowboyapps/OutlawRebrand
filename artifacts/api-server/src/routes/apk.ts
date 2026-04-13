@@ -1281,20 +1281,46 @@ async function removeApktoolDuplicates(decompDir: string): Promise<number> {
   }
   await walk(path.join(decompDir, "res"));
 
-  if (removed > 0) {
-    const publicXml = path.join(decompDir, "res", "values", "public.xml");
-    try {
-      const content = await fs.readFile(publicXml, "utf-8");
-      const cleaned = content.replace(
-        /[ \t]*<public[^>]*name="APKTOOL_DUPLICATE_[^"]*"[^>]*\/>\s*\n?/g,
-        ""
-      );
-      if (cleaned !== content) {
-        await fs.writeFile(publicXml, cleaned, "utf-8");
-        logger.info(`Cleaned APKTOOL_DUPLICATE entries from public.xml`);
-      }
-    } catch {}
-  }
+  const resDir = path.join(decompDir, "res");
+  try {
+    const resDirs = await fs.readdir(resDir, { withFileTypes: true });
+    for (const rd of resDirs) {
+      if (!rd.isDirectory() || !rd.name.startsWith("values")) continue;
+      const valDir = path.join(resDir, rd.name);
+      try {
+        const valFiles = await fs.readdir(valDir);
+        for (const vf of valFiles) {
+          if (!vf.endsWith(".xml")) continue;
+          const fp = path.join(valDir, vf);
+          try {
+            const content = await fs.readFile(fp, "utf-8");
+            const lines = content.split("\n");
+            const out: string[] = [];
+            let skipDepth = 0;
+            for (const line of lines) {
+              if (skipDepth > 0) {
+                if (/<\/\w+>/.test(line)) skipDepth--;
+                continue;
+              }
+              if (/name="APKTOOL_DUPLICATE_/.test(line)) {
+                removed++;
+                if (/\/>/.test(line)) continue;
+                if (/<\/\w+>/.test(line)) continue;
+                skipDepth = 1;
+                continue;
+              }
+              out.push(line);
+            }
+            const cleaned = out.join("\n");
+            if (cleaned !== content) {
+              await fs.writeFile(fp, cleaned, "utf-8");
+              logger.info(`Cleaned APKTOOL_DUPLICATE entries from ${rd.name}/${vf}`);
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
 
   return removed;
 }
