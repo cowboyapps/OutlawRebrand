@@ -5,6 +5,7 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import crypto from "crypto";
 import sharp from "sharp";
 import { logger } from "../lib/logger";
 
@@ -22,6 +23,8 @@ interface Session {
   outputPath: string;
   error?: string;
   progress?: string;
+  sha256?: string;
+  fileSize?: number;
 }
 
 const sessions = new Map<string, Session>();
@@ -302,6 +305,8 @@ router.get("/apk/:sessionId/status", (req: Request, res: Response) => {
     status: session.status,
     error: session.error,
     progress: session.progress,
+    sha256: session.sha256,
+    fileSize: session.fileSize,
   });
 });
 
@@ -1307,7 +1312,7 @@ async function tryApktoolBuild(args: string[]): Promise<void> {
 async function recompileApk(session: Session): Promise<void> {
   const sessionDir = path.dirname(session.apkPath);
   const unsignedApk = path.join(sessionDir, "unsigned.apk");
-  const keystorePath = path.join(WORK_DIR, "debug.keystore");
+  const keystorePath = path.join("/home/runner/workspace/tools", "debug.keystore");
 
   try {
     session.progress = "Cleaning up resources...";
@@ -1429,6 +1434,11 @@ async function recompileApk(session: Session): Promise<void> {
     ], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
 
     await fs.unlink(unsignedApk).catch(() => {});
+
+    const outputData = await fs.readFile(session.outputPath);
+    session.sha256 = crypto.createHash("sha256").update(outputData).digest("hex");
+    session.fileSize = outputData.length;
+    logger.info(`APK ready: size=${session.fileSize} sha256=${session.sha256}`);
 
     session.status = "done";
     session.progress = "APK is ready for download";

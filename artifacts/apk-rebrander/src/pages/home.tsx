@@ -879,7 +879,13 @@ function StepBuild({ sessionId, status, statusData, onBack, onBuildTriggered }: 
               </div>
               <div className="text-center max-w-md">
                 <h3 className="text-lg font-medium mb-2">Build Successful!</h3>
-                <p className="text-muted-foreground mb-6">Your rebranded APK is ready to be downloaded and distributed.</p>
+                <p className="text-muted-foreground mb-4">Your rebranded APK is ready to be downloaded and distributed.</p>
+                {statusData?.fileSize && (
+                  <p className="text-xs text-muted-foreground mb-1">Size: {(statusData.fileSize / 1024 / 1024).toFixed(2)} MB ({statusData.fileSize.toLocaleString()} bytes)</p>
+                )}
+                {statusData?.sha256 && (
+                  <p className="text-xs text-muted-foreground mb-4 font-mono break-all">SHA-256: {statusData.sha256}</p>
+                )}
                 <Button size="lg" onClick={handleDownload} className="w-full sm:w-auto">
                   <Download className="mr-2 h-5 w-5" />
                   Download APK
