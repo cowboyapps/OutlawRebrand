@@ -1299,14 +1299,20 @@ async function removeApktoolDuplicates(decompDir: string): Promise<number> {
             let skipDepth = 0;
             for (const line of lines) {
               if (skipDepth > 0) {
-                if (/<\/\w+>/.test(line)) skipDepth--;
+                const opens = (line.match(/<[a-zA-Z]/g) || []).length;
+                const selfCloses = (line.match(/\/>/g) || []).length;
+                const closes = (line.match(/<\//g) || []).length;
+                skipDepth += opens - selfCloses - closes;
+                if (skipDepth < 0) skipDepth = 0;
                 continue;
               }
               if (/name="APKTOOL_DUPLICATE_/.test(line)) {
                 removed++;
                 if (/\/>/.test(line)) continue;
-                if (/<\/\w+>/.test(line)) continue;
-                skipDepth = 1;
+                const opens = (line.match(/<[a-zA-Z]/g) || []).length;
+                const closes = (line.match(/<\//g) || []).length;
+                if (opens <= closes) continue;
+                skipDepth = opens - closes;
                 continue;
               }
               out.push(line);
