@@ -31,7 +31,10 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a full-stack w
 - Sessions stored in-memory (Map), work files in `/tmp/apk-rebrander/`
 - Keystore auto-generated at `/tmp/apk-rebrander/debug.keystore` (password: `rebrander123`)
 - APK signing uses custom `tools/SignApk.java` + `tools/apksigner.jar` (Google apksig 8.2.0) for v1+v2+v3 signing
+- ZIP alignment via custom `tools/ZipAlign.java` — aligns all uncompressed APK entries to 4-byte boundaries before signing (required by Android, especially Samsung devices)
+- Keystore persisted at `tools/debug.keystore` (PKCS12, password: `rebrander123`, alias: `rebrander`)
 - Pre-build cleanup: removes APKTOOL_DUPLICATE files, smali_assets dirs (if original dex preserved), stray root dex files
+- Build flow: apktool build → remove stray DEX → ZipAlign → sign with apksig
 - `multer` handles file uploads: 500MB limit for APKs, 10MB for images
 
 ## Key Commands
