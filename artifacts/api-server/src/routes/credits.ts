@@ -130,6 +130,64 @@ router.post("/webhook", async (req: Request, res: Response) => {
   }
 });
 
+router.post("/verify-payment", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { stripeSessionId } = req.body;
+    if (!stripeSessionId || typeof stripeSessionId !== "string") {
+      res.status(400).json({ error: "stripeSessionId is required" });
+      return;
+    }
+
+    const stripe = await getUncachableStripeClient();
+    const session = await stripe.checkout.sessions.retrieve(stripeSessionId);
+
+    if (session.status !== "complete" || session.payment_status !== "paid") {
+      res.json({ credited: false, reason: "Payment not completed" });
+      return;
+    }
+
+    const userId = parseInt(session.metadata?.userId || "0");
+    const credits = parseInt(session.metadata?.credits || "0");
+
+    if (userId !== req.user!.id) {
+      res.status(403).json({ error: "Session does not belong to this user" });
+      return;
+    }
+
+    if (!credits) {
+      res.status(400).json({ error: "Invalid session metadata" });
+      return;
+    }
+
+    const existing = await db.select().from(creditTransactionsTable)
+      .where(eq(creditTransactionsTable.stripeSessionId, stripeSessionId))
+      .limit(1);
+
+    if (existing.length > 0) {
+      res.json({ credited: true, credits, alreadyProcessed: true });
+      return;
+    }
+
+    await db.insert(creditTransactionsTable).values({
+      userId,
+      amount: credits,
+      type: "purchase",
+      description: `Purchased ${credits} credits`,
+      stripeSessionId: session.id,
+    });
+
+    await db.update(usersTable)
+      .set({ credits: sql`${usersTable.credits} + ${credits}` })
+      .where(eq(usersTable.id, userId));
+
+    console.log(`Verified payment: user ${userId} credited ${credits} credits (session ${session.id})`);
+    res.json({ credited: true, credits });
+  } catch (err) {
+    console.error("Verify payment error:", err);
+    res.status(500).json({ error: "Failed to verify payment" });
+  }
+});
+
 router.get("/balance", requireAuth, async (req: Request, res: Response) => {
   const users = await db.select().from(usersTable).where(eq(usersTable.id, req.user!.id)).limit(1);
   res.json({ credits: users[0]?.credits || 0 });

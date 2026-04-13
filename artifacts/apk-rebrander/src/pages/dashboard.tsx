@@ -51,8 +51,30 @@ export default function Dashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success") {
-      toast({ title: "Payment successful!", description: "Credits have been added to your account." });
-      refreshUser();
+      const pendingSessionId = localStorage.getItem("pendingStripeSession");
+      if (pendingSessionId) {
+        localStorage.removeItem("pendingStripeSession");
+        apiFetch("/credits/verify-payment", {
+          method: "POST",
+          body: JSON.stringify({ stripeSessionId: pendingSessionId }),
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.credited) {
+              toast({ title: "Payment successful!", description: `${data.credits} credits have been added to your account.` });
+            } else {
+              toast({ title: "Payment processing", description: "Your credits will appear shortly." });
+            }
+            refreshUser();
+          })
+          .catch(() => {
+            toast({ title: "Payment received", description: "Credits will be added shortly." });
+            refreshUser();
+          });
+      } else {
+        toast({ title: "Payment successful!", description: "Credits have been added to your account." });
+        refreshUser();
+      }
       window.history.replaceState({}, "", window.location.pathname);
     } else if (params.get("payment") === "cancelled") {
       toast({ title: "Payment cancelled", description: "No charges were made.", variant: "destructive" });
@@ -88,6 +110,9 @@ export default function Dashboard() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Checkout failed");
       if (data.url) {
+        if (data.sessionId) {
+          localStorage.setItem("pendingStripeSession", data.sessionId);
+        }
         window.location.href = data.url;
       }
     } catch (err) {
