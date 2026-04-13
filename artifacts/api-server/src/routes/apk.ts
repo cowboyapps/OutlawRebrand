@@ -1141,10 +1141,7 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
       let newContent = content;
 
       const layoutNames = ["layout_width", "layout_height"];
-      const strictDimNames = [
-        "rowHeight", "columnWidth", "minWidth", "minHeight",
-        "maxWidth", "maxHeight", "dropDownWidth", "dropDownHeight",
-      ];
+      const strictDimOnly = ["rowHeight", "columnWidth"];
       newContent = newContent.replace(
         /\s*([\w]+:(\w+))\s*=\s*"([^"]*)"/g,
         (match, fullAttr, attrName, val) => {
@@ -1152,7 +1149,7 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
             fixed++;
             return "";
           }
-          if (strictDimNames.includes(attrName)) {
+          if (strictDimOnly.includes(attrName)) {
             if (val === "wrap_content" || val === "match_parent" || val === "fill_parent" || /^-?\d+$/.test(val)) {
               fixed++;
               return "";
@@ -1489,8 +1486,10 @@ router.get("/apk/:sessionId/download", async (req: Request, res: Response) => {
 
   try {
     const outputName = session.fileName.replace(".apk", "-rebranded.apk");
+    const stat = await fs.stat(session.outputPath);
     res.setHeader("Content-Disposition", `attachment; filename="${outputName}"`);
     res.setHeader("Content-Type", "application/vnd.android.package-archive");
+    res.setHeader("Content-Length", stat.size.toString());
     const data = await fs.readFile(session.outputPath);
     res.send(data);
   } catch (err: unknown) {
