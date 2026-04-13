@@ -1141,12 +1141,26 @@ async function stubBinaryXmlFiles(decompDir: string): Promise<BinaryXmlBackup[]>
           if (!f.endsWith(".xml")) continue;
           const fp = path.join(subDir, f);
           try {
-            const buf = Buffer.alloc(4);
+            const checkSize = 512;
+            const buf = Buffer.alloc(checkSize);
             const fh = await fs.open(fp, "r");
-            await fh.read(buf, 0, 4, 0);
+            const { bytesRead } = await fh.read(buf, 0, checkSize, 0);
             await fh.close();
-            const firstByte = buf[0];
-            if (firstByte !== 0x3C && firstByte !== 0xEF && firstByte !== 0x20 && firstByte !== 0x09 && firstByte !== 0x0A && firstByte !== 0x0D) {
+            let isBinary = false;
+            if (bytesRead === 0) {
+              isBinary = false;
+            } else {
+              for (let i = 0; i < bytesRead; i++) {
+                if (buf[i] === 0x00) { isBinary = true; break; }
+              }
+              if (!isBinary) {
+                const firstByte = buf[0];
+                if (firstByte !== 0x3C && firstByte !== 0xEF && firstByte !== 0x20 && firstByte !== 0x09 && firstByte !== 0x0A && firstByte !== 0x0D) {
+                  isBinary = true;
+                }
+              }
+            }
+            if (isBinary) {
               const resRelPath = `res/${d.name}/${f}`;
               const bkp = path.join(backupDir, d.name, f);
               await fs.mkdir(path.join(backupDir, d.name), { recursive: true });
