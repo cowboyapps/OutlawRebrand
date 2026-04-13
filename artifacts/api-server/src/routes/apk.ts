@@ -1196,6 +1196,131 @@ async function restoreBinaryXmlInApk(apkPath: string, backups: BinaryXmlBackup[]
   }
 }
 
+async function fixNumericResourceNames(decompDir: string): Promise<number> {
+  let fixed = 0;
+  const resDir = path.join(decompDir, "res");
+  const publicXmlPath = path.join(resDir, "values", "public.xml");
+
+  let publicContent: string;
+  try {
+    publicContent = await fs.readFile(publicXmlPath, "utf-8");
+  } catch {
+    return 0;
+  }
+
+  const numericNames = new Set<string>();
+  const nameRegex = /name="(\d[^"]*)"/g;
+  let m;
+  while ((m = nameRegex.exec(publicContent)) !== null) {
+    numericNames.add(m[1]);
+  }
+
+  if (numericNames.size === 0) return 0;
+  logger.info(`Found ${numericNames.size} numeric resource name(s) to fix: ${[...numericNames].join(", ")}`);
+
+  for (const name of numericNames) {
+    try {
+      const resDirs = await fs.readdir(resDir, { withFileTypes: true });
+      for (const d of resDirs) {
+        if (!d.isDirectory()) continue;
+        const subDir = path.join(resDir, d.name);
+        const oldFile = path.join(subDir, `${name}.xml`);
+        const newFile = path.join(subDir, `_${name}.xml`);
+        try {
+          await fs.access(oldFile);
+          await fs.rename(oldFile, newFile);
+          fixed++;
+          logger.info(`Renamed ${d.name}/${name}.xml → _${name}.xml`);
+        } catch {}
+        const oldPng = path.join(subDir, `${name}.png`);
+        const newPng = path.join(subDir, `_${name}.png`);
+        try {
+          await fs.access(oldPng);
+          await fs.rename(oldPng, newPng);
+          fixed++;
+        } catch {}
+        const old9 = path.join(subDir, `${name}.9.png`);
+        const new9 = path.join(subDir, `_${name}.9.png`);
+        try {
+          await fs.access(old9);
+          await fs.rename(old9, new9);
+          fixed++;
+        } catch {}
+      }
+    } catch {}
+  }
+
+  const escapedNames = [...numericNames].map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const namePattern = escapedNames.join("|");
+  const attrNameRegex = new RegExp(`name="(${namePattern})"`, "g");
+  const refRegex = new RegExp(`@(\\+?[a-zA-Z_][a-zA-Z0-9_]*)/(${namePattern})(?=["\\s<])`, "g");
+
+  async function fixXmlContent(filePath: string): Promise<void> {
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      let newContent = content;
+      newContent = newContent.replace(attrNameRegex, (_m, n) => `name="_${n}"`);
+      newContent = newContent.replace(refRegex, (_m, type, n) => `@${type}/_${n}`);
+      if (newContent !== content) {
+        await fs.writeFile(filePath, newContent, "utf-8");
+        fixed++;
+      }
+    } catch {}
+  }
+
+  async function walkAndFix(dir: string): Promise<void> {
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walkAndFix(full);
+        } else if (entry.name.endsWith(".xml")) {
+          await fixXmlContent(full);
+        }
+      }
+    } catch {}
+  }
+
+  await walkAndFix(resDir);
+
+  const manifestPath = path.join(decompDir, "AndroidManifest.xml");
+  await fixXmlContent(manifestPath);
+
+  const idsPath = path.join(resDir, "values", "ids.xml");
+  try {
+    const updatedPublic = await fs.readFile(publicXmlPath, "utf-8");
+    const publicIdRegex = /<public\s+type="id"\s+name="_(\d[^"]*)"/g;
+    const neededIds = new Set<string>();
+    let pm;
+    while ((pm = publicIdRegex.exec(updatedPublic)) !== null) {
+      neededIds.add(`_${pm[1]}`);
+    }
+    if (neededIds.size > 0) {
+      let idsContent: string;
+      try {
+        idsContent = await fs.readFile(idsPath, "utf-8");
+      } catch {
+        idsContent = '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>';
+      }
+      let added = 0;
+      for (const idName of neededIds) {
+        if (!idsContent.includes(`name="${idName}"`)) {
+          idsContent = idsContent.replace("</resources>", `    <item type="id" name="${idName}" />\n</resources>`);
+          added++;
+        }
+      }
+      if (added > 0) {
+        await fs.writeFile(idsPath, idsContent, "utf-8");
+        fixed += added;
+        logger.info(`Added ${added} missing id definition(s) to ids.xml`);
+      }
+    }
+  } catch {}
+
+  return fixed;
+}
+
 async function fixAllResourceIssues(decompDir: string): Promise<number> {
   let fixed = 0;
 
@@ -1402,6 +1527,10 @@ async function recompileApk(session: Session): Promise<void> {
     }
 
     session.progress = "Fixing resource issues...";
+    const numericFixCount = await fixNumericResourceNames(session.decompDir);
+    if (numericFixCount > 0) {
+      logger.info(`Fixed ${numericFixCount} numeric resource name issues`);
+    }
     const binaryXmlBackups = await stubBinaryXmlFiles(session.decompDir);
     if (binaryXmlBackups.length > 0) {
       logger.info(`Stubbed ${binaryXmlBackups.length} binary/encrypted XML files for build`);
