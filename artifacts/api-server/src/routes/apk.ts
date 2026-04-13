@@ -1280,6 +1280,22 @@ async function removeApktoolDuplicates(decompDir: string): Promise<number> {
     }
   }
   await walk(path.join(decompDir, "res"));
+
+  if (removed > 0) {
+    const publicXml = path.join(decompDir, "res", "values", "public.xml");
+    try {
+      const content = await fs.readFile(publicXml, "utf-8");
+      const cleaned = content.replace(
+        /[ \t]*<public[^>]*name="APKTOOL_DUPLICATE_[^"]*"[^>]*\/>\s*\n?/g,
+        ""
+      );
+      if (cleaned !== content) {
+        await fs.writeFile(publicXml, cleaned, "utf-8");
+        logger.info(`Cleaned APKTOOL_DUPLICATE entries from public.xml`);
+      }
+    } catch {}
+  }
+
   return removed;
 }
 
