@@ -1261,7 +1261,7 @@ async function fixAllResourceIssues(decompDir: string): Promise<number> {
 }
 
 async function removeApktoolDuplicates(decompDir: string): Promise<number> {
-  let removed = 0;
+  let count = 0;
   async function walk(dir: string): Promise<void> {
     let entries;
     try {
@@ -1274,61 +1274,15 @@ async function removeApktoolDuplicates(decompDir: string): Promise<number> {
       if (entry.isDirectory()) {
         await walk(full);
       } else if (entry.name.startsWith("APKTOOL_DUPLICATE_")) {
-        await fs.unlink(full);
-        removed++;
+        count++;
       }
     }
   }
   await walk(path.join(decompDir, "res"));
-
-  const resDir = path.join(decompDir, "res");
-  try {
-    const resDirs = await fs.readdir(resDir, { withFileTypes: true });
-    for (const rd of resDirs) {
-      if (!rd.isDirectory() || !rd.name.startsWith("values")) continue;
-      const valDir = path.join(resDir, rd.name);
-      try {
-        const valFiles = await fs.readdir(valDir);
-        for (const vf of valFiles) {
-          if (!vf.endsWith(".xml")) continue;
-          const fp = path.join(valDir, vf);
-          try {
-            const content = await fs.readFile(fp, "utf-8");
-            const lines = content.split("\n");
-            const out: string[] = [];
-            let skipDepth = 0;
-            for (const line of lines) {
-              if (skipDepth > 0) {
-                const opens = (line.match(/<[a-zA-Z]/g) || []).length;
-                const selfCloses = (line.match(/\/>/g) || []).length;
-                const closes = (line.match(/<\//g) || []).length;
-                skipDepth += opens - selfCloses - closes;
-                if (skipDepth < 0) skipDepth = 0;
-                continue;
-              }
-              if (/name="APKTOOL_DUPLICATE_/.test(line)) {
-                removed++;
-                if (/\/>/.test(line)) continue;
-                const opens = (line.match(/<[a-zA-Z]/g) || []).length;
-                const closes = (line.match(/<\//g) || []).length;
-                if (opens <= closes) continue;
-                skipDepth = opens - closes;
-                continue;
-              }
-              out.push(line);
-            }
-            const cleaned = out.join("\n");
-            if (cleaned !== content) {
-              await fs.writeFile(fp, cleaned, "utf-8");
-              logger.info(`Cleaned APKTOOL_DUPLICATE entries from ${rd.name}/${vf}`);
-            }
-          } catch {}
-        }
-      } catch {}
-    }
-  } catch {}
-
-  return removed;
+  if (count > 0) {
+    logger.info(`Found ${count} APKTOOL_DUPLICATE files (kept for reference integrity)`);
+  }
+  return count;
 }
 
 async function removeSmaliAssetsDirs(decompDir: string): Promise<number> {
@@ -1426,10 +1380,7 @@ async function recompileApk(session: Session): Promise<void> {
 
   try {
     session.progress = "Cleaning up resources...";
-    const dupCount = await removeApktoolDuplicates(session.decompDir);
-    if (dupCount > 0) {
-      logger.info(`Removed ${dupCount} APKTOOL_DUPLICATE files`);
-    }
+    await removeApktoolDuplicates(session.decompDir);
 
     const smaliRemoved = await removeSmaliAssetsDirs(session.decompDir);
     if (smaliRemoved > 0) {
