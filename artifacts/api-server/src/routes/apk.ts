@@ -1119,6 +1119,69 @@ async function fixErrorsInFiles(errors: EnumErrorInfo[]): Promise<number> {
   return fixed;
 }
 
+interface BinaryXmlBackup {
+  resRelPath: string;
+  backupPath: string;
+}
+
+async function stubBinaryXmlFiles(decompDir: string): Promise<BinaryXmlBackup[]> {
+  const backups: BinaryXmlBackup[] = [];
+  const resDir = path.join(decompDir, "res");
+  const backupDir = path.join(path.dirname(decompDir), "binary_xml_backup");
+  const STUB = '<?xml version="1.0" encoding="utf-8"?>\n<placeholder />\n';
+
+  try {
+    const resDirs = await fs.readdir(resDir, { withFileTypes: true });
+    for (const d of resDirs) {
+      if (!d.isDirectory()) continue;
+      const subDir = path.join(resDir, d.name);
+      try {
+        const files = await fs.readdir(subDir);
+        for (const f of files) {
+          if (!f.endsWith(".xml")) continue;
+          const fp = path.join(subDir, f);
+          try {
+            const buf = Buffer.alloc(4);
+            const fh = await fs.open(fp, "r");
+            await fh.read(buf, 0, 4, 0);
+            await fh.close();
+            const firstByte = buf[0];
+            if (firstByte !== 0x3C && firstByte !== 0xEF && firstByte !== 0x20 && firstByte !== 0x09 && firstByte !== 0x0A && firstByte !== 0x0D) {
+              const resRelPath = `res/${d.name}/${f}`;
+              const bkp = path.join(backupDir, d.name, f);
+              await fs.mkdir(path.join(backupDir, d.name), { recursive: true });
+              await fs.copyFile(fp, bkp);
+              await fs.writeFile(fp, STUB, "utf-8");
+              backups.push({ resRelPath, backupPath: bkp });
+              logger.info(`Stubbed binary XML: ${resRelPath}`);
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
+  return backups;
+}
+
+async function restoreBinaryXmlInApk(apkPath: string, backups: BinaryXmlBackup[]): Promise<void> {
+  if (backups.length === 0) return;
+  const stagingDir = path.join(path.dirname(apkPath), "binary_xml_staging");
+  try {
+    for (const b of backups) {
+      const dest = path.join(stagingDir, b.resRelPath);
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await fs.copyFile(b.backupPath, dest);
+    }
+    const entryPaths = backups.map(b => b.resRelPath);
+    await execFileAsync("jar", ["-uf", apkPath, ...entryPaths], { cwd: stagingDir, timeout: 60000 });
+    logger.info(`Restored ${backups.length} binary XML files in APK via jar`);
+  } finally {
+    await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+    const backupDir = path.join(path.dirname(backups[0]?.backupPath || ""), "..");
+    await fs.rm(backupDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function fixAllResourceIssues(decompDir: string): Promise<number> {
   let fixed = 0;
 
@@ -1326,6 +1389,10 @@ async function recompileApk(session: Session): Promise<void> {
     }
 
     session.progress = "Fixing resource issues...";
+    const binaryXmlBackups = await stubBinaryXmlFiles(session.decompDir);
+    if (binaryXmlBackups.length > 0) {
+      logger.info(`Stubbed ${binaryXmlBackups.length} binary/encrypted XML files for build`);
+    }
     const enumFixCount = await fixAllResourceIssues(session.decompDir);
     if (enumFixCount > 0) {
       logger.info(`Pre-fixed ${enumFixCount} resource issues in XML files`);
@@ -1397,6 +1464,11 @@ async function recompileApk(session: Session): Promise<void> {
 
     session.progress = "Cleaning up APK...";
     await removeStrayRootDex(unsignedApk);
+
+    if (binaryXmlBackups.length > 0) {
+      session.progress = "Restoring encrypted XML resources...";
+      await restoreBinaryXmlInApk(unsignedApk, binaryXmlBackups);
+    }
 
     session.progress = "Aligning APK entries...";
     const alignedApk = unsignedApk.replace(".apk", "-aligned.apk");
