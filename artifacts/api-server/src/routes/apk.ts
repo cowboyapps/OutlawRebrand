@@ -25,6 +25,7 @@ interface Session {
   progress?: string;
   sha256?: string;
   fileSize?: number;
+  replacedImages: string[];
 }
 
 const sessions = new Map<string, Session>();
@@ -206,6 +207,7 @@ router.post("/apk/upload/complete", async (req: Request, res: Response) => {
       apkPath,
       decompDir,
       outputPath,
+      replacedImages: [],
     };
     sessions.set(sessionId, session);
     cleanupOldSessions().catch(() => {});
@@ -252,6 +254,7 @@ router.post("/apk/upload", upload.single("apk"), async (req: Request, res: Respo
       apkPath,
       decompDir,
       outputPath,
+      replacedImages: [],
     };
     sessions.set(sessionId, session);
     cleanupOldSessions().catch(() => {});
@@ -954,6 +957,11 @@ router.post("/apk/:sessionId/image/replace", imageUpload.single("image"), async 
     }
 
     await fs.unlink(req.file.path);
+
+    if (!session.replacedImages.includes(targetPath)) {
+      session.replacedImages.push(targetPath);
+    }
+
     const thumbnail = targetExt !== ".xml" ? await generateThumbnail(fullTargetPath) : undefined;
     let newWidth: number | undefined;
     let newHeight: number | undefined;
@@ -1309,6 +1317,61 @@ async function tryApktoolBuild(args: string[]): Promise<void> {
   });
 }
 
+async function patchImagesInApk(apkPath: string, decompDir: string, replacedImages: string[]): Promise<void> {
+  const imageList = replacedImages
+    .filter(p => !p.endsWith(".xml"))
+    .map(p => p.startsWith("res/") ? p : `res/${p}`);
+
+  if (imageList.length === 0) return;
+
+  const script = `
+import zipfile
+import sys
+import os
+import json
+import shutil
+import copy
+
+apk_path = sys.argv[1]
+decomp_dir = sys.argv[2]
+images = json.loads(sys.argv[3])
+tmp_path = apk_path + '.patched'
+
+patched = 0
+with zipfile.ZipFile(apk_path, 'r') as zin:
+    with zipfile.ZipFile(tmp_path, 'w') as zout:
+        for item in zin.infolist():
+            if item.filename in images:
+                disk_path = os.path.join(decomp_dir, item.filename)
+                if os.path.exists(disk_path):
+                    with open(disk_path, 'rb') as f:
+                        raw_data = f.read()
+                    info = copy.copy(item)
+                    info.compress_type = zipfile.ZIP_STORED
+                    info.file_size = len(raw_data)
+                    info.compress_size = len(raw_data)
+                    info.header_offset = 0
+                    zout.writestr(info, raw_data)
+                    patched += 1
+                    continue
+            data = zin.read(item.filename)
+            info = copy.copy(item)
+            info.header_offset = 0
+            zout.writestr(info, data)
+
+shutil.move(tmp_path, apk_path)
+print(f'Patched {patched} images')
+`;
+
+  const { stdout } = await execFileAsync("python3", [
+    "-c", script, apkPath, decompDir, JSON.stringify(imageList)
+  ], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
+
+  if (stdout.trim()) {
+    logger.info(stdout.trim());
+  }
+}
+
 async function recompileApk(session: Session): Promise<void> {
   const sessionDir = path.dirname(session.apkPath);
   const unsignedApk = path.join(sessionDir, "unsigned.apk");
@@ -1398,6 +1461,12 @@ async function recompileApk(session: Session): Promise<void> {
 
     session.progress = "Cleaning up APK...";
     await removeStrayRootDex(unsignedApk);
+
+    if (session.replacedImages.length > 0) {
+      session.progress = "Patching replaced images...";
+      await patchImagesInApk(unsignedApk, session.decompDir, session.replacedImages);
+      logger.info(`Patched ${session.replacedImages.length} replaced images in APK (bypassing AAPT crunching)`);
+    }
 
     session.progress = "Generating signing key...";
     try {
