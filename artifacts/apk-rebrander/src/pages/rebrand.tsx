@@ -295,8 +295,13 @@ function StepConfigure({ sessionId, appName: initialName, onNext, onBack }: { se
       setReplacements({});
       setHasSearched(false);
       setKeyword("");
-    } catch {
-      toast({ title: "Error", description: "Failed to apply replacements", variant: "destructive" });
+    } catch (err: any) {
+      const msg = err?.message || err?.error || "Failed to apply replacements";
+      if (msg.includes("not found") || msg.includes("404")) {
+        toast({ title: "Session Expired", description: "Your editing session has expired. Please go back and start a new rebrand.", variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: msg, variant: "destructive" });
+      }
     } finally {
       setIsSaving(false);
     }

@@ -802,13 +802,23 @@ router.put("/apk/:sessionId/url/replace", async (req: Request, res: Response) =>
   try {
     let applied = 0;
     const perFile: Record<string, number> = {};
+    const skipped: string[] = [];
     const fileEdits = new Map<string, Array<{ lineNumber: number; columnStart: number; oldText: string; newText: string }>>();
 
     for (const entry of replacements) {
-      if (!entry.file || !entry.oldText || !entry.newText || entry.oldText === entry.newText) continue;
-      if (typeof entry.columnStart !== "number" || entry.columnStart < 0) continue;
+      if (!entry.file || !entry.oldText || !entry.newText || entry.oldText === entry.newText) {
+        skipped.push(`Skipped entry: missing fields or same text`);
+        continue;
+      }
+      if (typeof entry.columnStart !== "number" || entry.columnStart < 0) {
+        skipped.push(`Skipped entry in ${entry.file}: invalid columnStart=${entry.columnStart}`);
+        continue;
+      }
       const resolvedPath = path.resolve(session.decompDir, entry.file);
-      if (!resolvedPath.startsWith(session.decompDir + path.sep)) continue;
+      if (!resolvedPath.startsWith(session.decompDir + path.sep)) {
+        skipped.push(`Skipped entry: path traversal blocked for ${entry.file}`);
+        continue;
+      }
       const existing = fileEdits.get(entry.file) || [];
       existing.push({ lineNumber: entry.lineNumber, columnStart: entry.columnStart, oldText: entry.oldText, newText: entry.newText });
       fileEdits.set(entry.file, existing);
@@ -827,12 +837,23 @@ router.put("/apk/:sessionId/url/replace", async (req: Request, res: Response) =>
         let fileApplied = 0;
         for (const edit of sortedEdits) {
           const idx = edit.lineNumber - 1;
-          if (idx < 0 || idx >= lines.length) continue;
+          if (idx < 0 || idx >= lines.length) {
+            skipped.push(`${relFile}:${edit.lineNumber} - line out of range (max ${lines.length})`);
+            continue;
+          }
           const line = lines[idx];
           const segment = line.substring(edit.columnStart, edit.columnStart + edit.oldText.length);
           if (segment === edit.oldText) {
             lines[idx] = line.substring(0, edit.columnStart) + edit.newText + line.substring(edit.columnStart + edit.oldText.length);
             fileApplied++;
+          } else {
+            const altPos = line.indexOf(edit.oldText);
+            if (altPos !== -1) {
+              lines[idx] = line.substring(0, altPos) + edit.newText + line.substring(altPos + edit.oldText.length);
+              fileApplied++;
+            } else {
+              skipped.push(`${relFile}:${edit.lineNumber} - text "${edit.oldText}" not found at col ${edit.columnStart} (found "${segment.substring(0, 30)}")`);
+            }
           }
         }
         if (fileApplied > 0) {
@@ -840,13 +861,18 @@ router.put("/apk/:sessionId/url/replace", async (req: Request, res: Response) =>
           applied += fileApplied;
           perFile[relFile] = fileApplied;
         }
-      } catch {
-        // skip inaccessible files
+      } catch (fileErr) {
+        const msg = fileErr instanceof Error ? fileErr.message : "unknown error";
+        skipped.push(`${relFile}: file read/write error - ${msg}`);
       }
     }
 
+    if (skipped.length > 0) {
+      console.log("Batch replace skipped entries:", skipped);
+    }
     res.json({ success: true, applied, perFile });
   } catch (err: unknown) {
+    console.error("Batch replace error:", err);
     const message = err instanceof Error ? err.message : "Replacement failed";
     res.status(500).json({ error: message });
   }
