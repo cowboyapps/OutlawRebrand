@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { getAuth, clerkClient } from "@clerk/express";
 import crypto from "crypto";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import { db, pool } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -27,6 +28,57 @@ function getAdminSession(token: string): { userId: number } | null {
     return null;
   }
   return { userId: session.userId };
+}
+
+function getClerkInstanceDomain(): string | null {
+  const pubKey = process.env.VITE_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY || "";
+  const match = pubKey.match(/^pk_(test|live)_(.+)$/);
+  if (!match) return null;
+  try {
+    const decoded = Buffer.from(match[2], "base64").toString("utf-8").replace(/\$$/, "");
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+let jwksSet: ReturnType<typeof createRemoteJWKSet> | null = null;
+function getJWKS(): ReturnType<typeof createRemoteJWKSet> | null {
+  if (jwksSet) return jwksSet;
+  const domain = getClerkInstanceDomain();
+  if (!domain) return null;
+  const jwksUrl = new URL(`https://${domain}/.well-known/jwks.json`);
+  jwksSet = createRemoteJWKSet(jwksUrl);
+  return jwksSet;
+}
+
+interface ClerkJwtPayload {
+  sub: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+async function verifyClerkJwt(token: string): Promise<ClerkJwtPayload | null> {
+  const jwks = getJWKS();
+  if (!jwks) return null;
+  try {
+    const { payload } = await jwtVerify(token, jwks);
+    return payload as unknown as ClerkJwtPayload;
+  } catch (err) {
+    logger.debug({ err }, "JWT verification failed");
+    return null;
+  }
+}
+
+function extractSessionToken(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  const sessionCookie = req.cookies?.["__session"];
+  if (sessionCookie) return sessionCookie;
+  return null;
 }
 
 async function getClerkEmail(clerkId: string): Promise<{ email: string; name: string }> {
@@ -153,8 +205,23 @@ export const requireAuth = async (
       }
     }
 
-    const auth = getAuth(req);
-    const clerkId = auth?.userId;
+    let clerkId: string | null = null;
+
+    const clerkAuth = getAuth(req);
+    if (clerkAuth?.userId) {
+      clerkId = clerkAuth.userId;
+    }
+
+    if (!clerkId) {
+      const token = extractSessionToken(req);
+      if (token) {
+        const payload = await verifyClerkJwt(token);
+        if (payload?.sub) {
+          clerkId = payload.sub;
+          logger.info({ clerkId }, "Auth: verified via direct JWT");
+        }
+      }
+    }
 
     if (!clerkId) {
       res.status(401).json({ error: "Unauthorized" });
