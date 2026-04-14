@@ -25,6 +25,13 @@ async function syncUser(clerkId: string, email: string, name: string) {
     .limit(1);
 
   if (existing.length > 0) {
+    if (email && (!existing[0].email || existing[0].email !== email)) {
+      await db
+        .update(usersTable)
+        .set({ email })
+        .where(eq(usersTable.clerkId, clerkId));
+      existing[0].email = email;
+    }
     return existing[0];
   }
 
