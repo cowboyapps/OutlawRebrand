@@ -8,6 +8,13 @@
       "when": 1776155104540,
       "tag": "0000_stale_edwin_jarvis",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776328800000,
+      "tag": "0001_add_price_cents_and_pack_linkage",
+      "breakpoints": true
     }
   ]
 }

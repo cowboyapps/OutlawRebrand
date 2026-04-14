@@ -312,15 +312,17 @@ function EditAppDialog({
 function ImageConfigDialog({ app, onClose }: { app: AppData; onClose: () => void }) {
   const { toast } = useToast();
   const [images, setImages] = useState<AppImage[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState("");
 
-  const { data: imageList } = useQuery<AppImage[]>({
+  const { data: imageList, isLoading: loading, isError, error } = useQuery<AppImage[]>({
     queryKey: ["admin", "apps", app.id, "images"],
     queryFn: async () => {
       const res = await apiFetch(`/admin/apps/${app.id}/images`);
-      if (!res.ok) throw new Error("Failed to fetch images");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: "Failed to fetch images" }));
+        throw new Error(body.error || "Failed to fetch images");
+      }
       return res.json();
     },
   });
@@ -328,7 +330,6 @@ function ImageConfigDialog({ app, onClose }: { app: AppData; onClose: () => void
   useEffect(() => {
     if (imageList) {
       setImages(imageList);
-      setLoading(false);
     }
   }, [imageList]);
 
@@ -408,6 +409,11 @@ function ImageConfigDialog({ app, onClose }: { app: AppData; onClose: () => void
         {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        ) : isError ? (
+          <div className="text-center py-8 text-destructive">
+            <p className="font-medium">Failed to load images</p>
+            <p className="text-sm text-muted-foreground mt-1">{error?.message || "The app may still be decompiling. Please try again later."}</p>
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto space-y-2 pr-1">
