@@ -43,12 +43,15 @@ async function syncUser(clerkId: string, email: string, name: string) {
     const countResult = await client.query("SELECT count(*)::int AS cnt FROM users");
     const isFirstUser = (countResult.rows[0]?.cnt ?? 0) === 0;
 
+    const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+    const shouldBeAdmin = isFirstUser || (email && adminEmails.includes(email.toLowerCase()));
+
     const insertResult = await client.query(
       `INSERT INTO users (clerk_id, email, password_hash, name, is_admin, credits, created_at)
        VALUES ($1, $2, 'clerk-managed', $3, $4, 0, now())
        ON CONFLICT (clerk_id) DO NOTHING
        RETURNING *`,
-      [clerkId, email, name || email.split("@")[0], isFirstUser]
+      [clerkId, email, name || email.split("@")[0], shouldBeAdmin]
     );
 
     await client.query("COMMIT");
