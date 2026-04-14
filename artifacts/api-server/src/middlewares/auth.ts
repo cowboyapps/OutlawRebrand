@@ -61,13 +61,18 @@ interface ClerkJwtPayload {
 }
 
 async function verifyClerkJwt(token: string): Promise<ClerkJwtPayload | null> {
+  const domain = getClerkInstanceDomain();
+  logger.info({ domain }, "Auth debug: Clerk instance domain");
   const jwks = getJWKS();
-  if (!jwks) return null;
+  if (!jwks) {
+    logger.warn("Auth debug: No JWKS set available");
+    return null;
+  }
   try {
     const { payload } = await jwtVerify(token, jwks);
     return payload as unknown as ClerkJwtPayload;
-  } catch (err) {
-    logger.debug({ err }, "JWT verification failed");
+  } catch (err: any) {
+    logger.warn({ errMessage: err?.message, errCode: err?.code }, "Auth debug: JWT verification failed");
     return null;
   }
 }
@@ -222,14 +227,31 @@ export const requireAuth = async (
     let jwtEmail = "";
     let jwtName = "";
 
+    const authHeader = req.headers.authorization;
+    const sessionCookie = req.cookies?.["__session"];
+    const allCookieKeys = req.cookies ? Object.keys(req.cookies) : [];
+    logger.info({
+      hasAuthHeader: !!authHeader,
+      authHeaderPrefix: authHeader ? authHeader.substring(0, 20) : null,
+      hasSessionCookie: !!sessionCookie,
+      cookieKeys: allCookieKeys,
+      url: req.url,
+    }, "Auth debug: incoming request");
+
     const token = extractSessionToken(req);
     if (token) {
+      logger.info({ tokenLength: token.length, tokenPrefix: token.substring(0, 30) }, "Auth debug: found token");
       const payload = await verifyClerkJwt(token);
       if (payload?.sub) {
         clerkId = payload.sub;
         jwtEmail = (payload.email as string) || "";
         jwtName = [payload.first_name, payload.last_name].filter(Boolean).join(" ");
+        logger.info({ clerkId, jwtEmail }, "Auth debug: JWT verified successfully");
+      } else {
+        logger.warn("Auth debug: JWT verification returned null payload");
       }
+    } else {
+      logger.warn("Auth debug: No token found in request");
     }
 
     if (!clerkId) {
