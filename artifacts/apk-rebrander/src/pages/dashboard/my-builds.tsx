@@ -78,7 +78,7 @@ export default function MyBuilds({ highlightJobId }: { highlightJobId: number | 
         throw new Error(data.error || data.message || "Failed to unlock");
       }
       queryClient.invalidateQueries({ queryKey: ["customer", "builds"] });
-      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     } catch (err: unknown) {
       setUnlockError(err instanceof Error ? err.message : "Failed to unlock");
     } finally {

@@ -784,6 +784,17 @@ router.post("/customer/builds/:jobId/unlock", async (req: AuthRequest, res: Resp
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+
+      const lockResult = await client.query(
+        "UPDATE rebrand_jobs SET credits_deducted = true WHERE id = $1 AND credits_deducted = false RETURNING id",
+        [jobId]
+      );
+      if (lockResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        res.json({ success: true, message: "Build already unlocked" });
+        return;
+      }
+
       const creditCheck = await client.query(
         "UPDATE users SET credits = credits - $1 WHERE id = $2 AND credits >= $1 RETURNING credits",
         [job.creditsCost, req.userId]
@@ -802,11 +813,6 @@ router.post("/customer/builds/:jobId/unlock", async (req: AuthRequest, res: Resp
         `INSERT INTO credit_transactions (user_id, amount, type, description, rebrand_job_id, created_at)
          VALUES ($1, $2, 'deduction', $3, $4, now())`,
         [req.userId, -job.creditsCost, `Rebrand build #${jobId}`, jobId]
-      );
-
-      await client.query(
-        "UPDATE rebrand_jobs SET credits_deducted = true WHERE id = $1",
-        [jobId]
       );
 
       await client.query("COMMIT");
