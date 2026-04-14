@@ -104,6 +104,11 @@ router.get("/stripe/checkout-success", requireAuth, async (req: AuthRequest, res
     const stripe = await getUncachableStripeClient();
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
+    if (session.metadata?.userId !== String(req.userId)) {
+      res.status(403).json({ error: "Not authorized to view this session" });
+      return;
+    }
+
     if (session.payment_status === "paid") {
       res.json({ success: true, status: "paid" });
     } else {

@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import type Stripe from "stripe";
 import { getUncachableStripeClient } from "./stripeClient";
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
@@ -32,7 +33,7 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     );
 
     if (event.type === "checkout.session.completed") {
-      const session = event.data.object as any;
+      const session = event.data.object as Stripe.Checkout.Session;
 
       if (session.payment_status === "paid" && session.metadata) {
         const userId = Number(session.metadata.userId);
@@ -84,8 +85,9 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     }
 
     res.status(200).json({ received: true });
-  } catch (err: any) {
-    if (err.type === "StripeSignatureVerificationError") {
+  } catch (err: unknown) {
+    const stripeErr = err as { type?: string };
+    if (stripeErr.type === "StripeSignatureVerificationError") {
       logger.warn("Stripe webhook signature verification failed — rejecting");
       res.status(400).json({ error: "Invalid signature" });
     } else {
