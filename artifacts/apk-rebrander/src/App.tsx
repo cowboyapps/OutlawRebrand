@@ -11,6 +11,7 @@ import Landing from "@/pages/landing";
 import AdminDashboard from "@/pages/admin/index";
 import CustomerDashboard from "@/pages/dashboard/index";
 import Home from "@/pages/home";
+import AdminLogin from "@/pages/admin-login";
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -106,7 +107,17 @@ function RoleRedirect() {
   return <Redirect to="/dashboard" />;
 }
 
+function hasAdminCookie(): boolean {
+  return document.cookie.split(";").some((c) => c.trim().startsWith("admin_token="));
+}
+
 function ProtectedAdmin() {
+  const isAdminSession = hasAdminCookie();
+
+  if (isAdminSession) {
+    return <AdminGuard />;
+  }
+
   return (
     <>
       <Show when="signed-in">
@@ -167,6 +178,7 @@ function ClerkProviderWithRoutes() {
             <Route path="/" component={HomeRedirect} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
+            <Route path="/admin-login" component={AdminLogin} />
             <Route path="/admin/*?" component={ProtectedAdmin} />
             <Route path="/dashboard/*?" component={ProtectedDashboard} />
             <Route component={NotFound} />

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { getAuth, clerkClient } from "@clerk/express";
+import crypto from "crypto";
 import { db, pool } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -8,6 +9,24 @@ import { logger } from "../lib/logger";
 export interface AuthRequest extends Request {
   userId?: number;
   dbUser?: typeof usersTable.$inferSelect;
+}
+
+const adminSessions = new Map<string, { userId: number; expiresAt: number }>();
+
+export function createAdminSession(userId: number): string {
+  const token = crypto.randomBytes(32).toString("hex");
+  adminSessions.set(token, { userId, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
+  return token;
+}
+
+function getAdminSession(token: string): { userId: number } | null {
+  const session = adminSessions.get(token);
+  if (!session) return null;
+  if (Date.now() > session.expiresAt) {
+    adminSessions.delete(token);
+    return null;
+  }
+  return { userId: session.userId };
 }
 
 async function getClerkEmail(clerkId: string): Promise<{ email: string; name: string }> {
@@ -116,6 +135,24 @@ export const requireAuth = async (
   next: NextFunction,
 ) => {
   try {
+    const adminToken = req.cookies?.admin_token || req.headers["x-admin-token"];
+    if (adminToken) {
+      const session = getAdminSession(adminToken as string);
+      if (session) {
+        const [dbUser] = await db
+          .select()
+          .from(usersTable)
+          .where(eq(usersTable.id, session.userId))
+          .limit(1);
+        if (dbUser) {
+          req.userId = dbUser.id;
+          req.dbUser = dbUser;
+          next();
+          return;
+        }
+      }
+    }
+
     const auth = getAuth(req);
     const clerkId = auth?.userId;
 
