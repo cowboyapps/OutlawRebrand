@@ -16,12 +16,19 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     return;
   }
 
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    logger.error("STRIPE_WEBHOOK_SECRET is not configured — rejecting webhook");
+    res.status(500).json({ error: "Webhook not configured" });
+    return;
+  }
+
   try {
     const stripe = await getUncachableStripeClient();
     const event = stripe.webhooks.constructEvent(
       req.body,
       Array.isArray(signature) ? signature[0] : signature,
-      process.env.STRIPE_WEBHOOK_SECRET || ""
+      webhookSecret
     );
 
     if (event.type === "checkout.session.completed") {
@@ -34,42 +41,44 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
         const stripeSessionId = session.id;
         const amountPaidCents = session.amount_total;
 
-        if (userId && credits && creditPackId) {
-          const client = await pool.connect();
-          try {
-            await client.query("BEGIN");
+        if (!userId || !credits || !creditPackId) {
+          logger.warn({ metadata: session.metadata }, "Webhook missing required metadata");
+          res.status(200).json({ received: true });
+          return;
+        }
 
-            const existing = await client.query(
-              "SELECT id FROM credit_transactions WHERE stripe_session_id = $1",
-              [stripeSessionId]
-            );
-            if (existing.rows.length > 0) {
-              await client.query("ROLLBACK");
-              logger.info({ stripeSessionId }, "Duplicate webhook event, skipping");
-              res.status(200).json({ received: true });
-              return;
-            }
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
 
-            await client.query(
-              "UPDATE users SET credits = credits + $1 WHERE id = $2",
-              [credits, userId]
-            );
+          const insertResult = await client.query(
+            `INSERT INTO credit_transactions (user_id, amount, type, description, stripe_session_id, credit_pack_id, amount_paid_cents, created_at)
+             VALUES ($1, $2, 'purchase', $3, $4, $5, $6, now())
+             ON CONFLICT (stripe_session_id) DO NOTHING
+             RETURNING id`,
+            [userId, credits, `Purchased ${credits} credits`, stripeSessionId, creditPackId, amountPaidCents]
+          );
 
-            await client.query(
-              `INSERT INTO credit_transactions (user_id, amount, type, description, stripe_session_id, credit_pack_id, amount_paid_cents, created_at)
-               VALUES ($1, $2, 'purchase', $3, $4, $5, $6, now())`,
-              [userId, credits, `Purchased ${credits} credits`, stripeSessionId, creditPackId, amountPaidCents]
-            );
-
-            await client.query("COMMIT");
-            logger.info({ userId, credits, stripeSessionId }, "Credits added via Stripe payment");
-          } catch (txErr) {
-            await client.query("ROLLBACK").catch(() => {});
-            logger.error({ err: txErr }, "Failed to credit user after payment");
-            throw txErr;
-          } finally {
-            client.release();
+          if (insertResult.rows.length === 0) {
+            await client.query("ROLLBACK");
+            logger.info({ stripeSessionId }, "Duplicate webhook event, skipping");
+            res.status(200).json({ received: true });
+            return;
           }
+
+          await client.query(
+            "UPDATE users SET credits = credits + $1 WHERE id = $2",
+            [credits, userId]
+          );
+
+          await client.query("COMMIT");
+          logger.info({ userId, credits, stripeSessionId }, "Credits added via Stripe payment");
+        } catch (txErr) {
+          await client.query("ROLLBACK").catch(() => {});
+          logger.error({ err: txErr }, "Failed to credit user after payment");
+          throw txErr;
+        } finally {
+          client.release();
         }
       }
     }
@@ -77,55 +86,8 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     res.status(200).json({ received: true });
   } catch (err: any) {
     if (err.type === "StripeSignatureVerificationError") {
-      logger.warn("Stripe webhook signature verification failed — processing without verification");
-      try {
-        const event = JSON.parse(req.body.toString());
-        if (event.type === "checkout.session.completed") {
-          const session = event.data?.object;
-          if (session?.payment_status === "paid" && session?.metadata) {
-            const userId = Number(session.metadata.userId);
-            const credits = Number(session.metadata.credits);
-            const creditPackId = Number(session.metadata.creditPackId);
-            const stripeSessionId = session.id;
-            const amountPaidCents = session.amount_total;
-
-            if (userId && credits && creditPackId) {
-              const client = await pool.connect();
-              try {
-                await client.query("BEGIN");
-                const existing = await client.query(
-                  "SELECT id FROM credit_transactions WHERE stripe_session_id = $1",
-                  [stripeSessionId]
-                );
-                if (existing.rows.length === 0) {
-                  await client.query(
-                    "UPDATE users SET credits = credits + $1 WHERE id = $2",
-                    [credits, userId]
-                  );
-                  await client.query(
-                    `INSERT INTO credit_transactions (user_id, amount, type, description, stripe_session_id, credit_pack_id, amount_paid_cents, created_at)
-                     VALUES ($1, $2, 'purchase', $3, $4, $5, $6, now())`,
-                    [userId, credits, `Purchased ${credits} credits`, stripeSessionId, creditPackId, amountPaidCents]
-                  );
-                  await client.query("COMMIT");
-                  logger.info({ userId, credits, stripeSessionId }, "Credits added (unverified webhook)");
-                } else {
-                  await client.query("ROLLBACK");
-                }
-              } catch (txErr) {
-                await client.query("ROLLBACK").catch(() => {});
-                throw txErr;
-              } finally {
-                client.release();
-              }
-            }
-          }
-        }
-        res.status(200).json({ received: true });
-      } catch (parseErr) {
-        logger.error({ err: parseErr }, "Failed to parse webhook body");
-        res.status(400).json({ error: "Webhook processing error" });
-      }
+      logger.warn("Stripe webhook signature verification failed — rejecting");
+      res.status(400).json({ error: "Invalid signature" });
     } else {
       logger.error({ err }, "Webhook handler error");
       res.status(400).json({ error: "Webhook processing error" });

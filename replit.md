@@ -13,6 +13,7 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 - **API framework**: Express 5
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui
 - **Auth**: Clerk (with proxy middleware for production)
+- **Payments**: Stripe (checkout sessions + webhooks)
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
@@ -44,8 +45,8 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 - **users**: id, email, password_hash, name, is_admin, credits, stripe_customer_id, clerk_id
 - **base_apks**: id, name, slug, description, credit_cost, file_path, package_name, version_name, icon_path, is_active, image_labels (JSON text)
 - **credit_packages**: id, name, credits, price_usd, stripe_price_id, is_active
-- **credit_transactions**: id, user_id, amount, type, description, stripe_session_id, rebrand_job_id
-- **rebrand_jobs**: id, user_id, base_apk_id, app_name, status, session_id, output_path, credits_cost, credits_deducted, error_message
+- **credit_transactions**: id, user_id, amount, type, description, stripe_session_id, rebrand_job_id, credit_pack_id, amount_paid_cents
+- **rebrand_jobs**: id, user_id, base_apk_id, app_name, status, session_id, output_path, credits_cost, credits_deducted, error_message, output_file_name
 - Schema definitions in `lib/db/src/schema/`
 - Push schema: `pnpm --filter @workspace/db run push`
 
@@ -111,6 +112,10 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 - `artifacts/apk-rebrander/src/pages/dashboard/app-browser.tsx` — browse available apps grid
 - `artifacts/apk-rebrander/src/pages/dashboard/rebrand-wizard.tsx` — guided rebrand flow (panel URL, app name, images, build)
 - `artifacts/apk-rebrander/src/pages/dashboard/my-builds.tsx` — build history with download links
+- `artifacts/apk-rebrander/src/pages/dashboard/buy-credits.tsx` — credit pack purchase UI with Stripe checkout and transaction history
+- `artifacts/api-server/src/routes/stripe.ts` — Stripe checkout session creation, credit pack listing, purchase history
+- `artifacts/api-server/src/lib/stripeClient.ts` — Stripe SDK client (uses STRIPE_SECRET_KEY env var)
+- `artifacts/api-server/src/lib/stripeWebhook.ts` — Stripe webhook handler (checkout.session.completed → credits user)
 - `lib/db/src/schema/` — Drizzle ORM schema definitions
 - `lib/api-spec/openapi.yaml` — API contract
 - `tools/` — Java APK tools (SignApk, ZipAlign, apksigner.jar)

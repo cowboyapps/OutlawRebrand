@@ -10,7 +10,7 @@ export const creditTransactionsTable = pgTable("credit_transactions", {
   amount: integer("amount").notNull(),
   type: text("type").notNull(),
   description: text("description"),
-  stripeSessionId: text("stripe_session_id"),
+  stripeSessionId: text("stripe_session_id").unique(),
   rebrandJobId: integer("rebrand_job_id"),
   creditPackId: integer("credit_pack_id").references(() => creditPacksTable.id),
   amountPaidCents: integer("amount_paid_cents"),
