@@ -7,7 +7,8 @@ CREATE TABLE "users" (
 	"credits" integer DEFAULT 0 NOT NULL,
 	"stripe_customer_id" text,
 	"clerk_id" text,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "users_clerk_id_unique" UNIQUE("clerk_id")
 );
 --> statement-breakpoint
 CREATE TABLE "base_apks" (

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -10,7 +10,7 @@ export const usersTable = pgTable("users", {
   isAdmin: boolean("is_admin").notNull().default(false),
   credits: integer("credits").notNull().default(0),
   stripeCustomerId: text("stripe_customer_id"),
-  clerkId: text("clerk_id"),
+  clerkId: text("clerk_id").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

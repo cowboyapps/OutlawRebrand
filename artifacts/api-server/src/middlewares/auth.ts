@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { getAuth } from "@clerk/express";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 
@@ -28,33 +28,51 @@ async function syncUser(clerkId: string, email: string, name: string) {
     return existing[0];
   }
 
-  const userCount = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(usersTable);
-  const isFirstUser = (userCount[0]?.count ?? 0) === 0;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("LOCK TABLE users IN EXCLUSIVE MODE");
 
-  const [newUser] = await db
-    .insert(usersTable)
-    .values({
-      clerkId,
-      email,
-      name: name || email.split("@")[0],
-      passwordHash: "clerk-managed",
-      isAdmin: isFirstUser,
-    })
-    .onConflictDoNothing({ target: usersTable.clerkId })
-    .returning();
+    const countResult = await client.query("SELECT count(*)::int AS cnt FROM users");
+    const isFirstUser = (countResult.rows[0]?.cnt ?? 0) === 0;
 
-  if (!newUser) {
-    const [fallback] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.clerkId, clerkId))
-      .limit(1);
-    return fallback;
+    const insertResult = await client.query(
+      `INSERT INTO users (clerk_id, email, password_hash, name, is_admin, credits, created_at)
+       VALUES ($1, $2, 'clerk-managed', $3, $4, 0, now())
+       ON CONFLICT (clerk_id) DO NOTHING
+       RETURNING *`,
+      [clerkId, email, name || email.split("@")[0], isFirstUser]
+    );
+
+    await client.query("COMMIT");
+
+    if (insertResult.rows.length > 0) {
+      const row = insertResult.rows[0];
+      return {
+        id: row.id,
+        email: row.email,
+        passwordHash: row.password_hash,
+        name: row.name,
+        isAdmin: row.is_admin,
+        credits: row.credits,
+        stripeCustomerId: row.stripe_customer_id,
+        clerkId: row.clerk_id,
+        createdAt: row.created_at,
+      };
+    }
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
 
-  return newUser;
+  const [fallback] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.clerkId, clerkId))
+    .limit(1);
+  return fallback;
 }
 
 export const requireAuth = async (
@@ -62,26 +80,31 @@ export const requireAuth = async (
   res: Response,
   next: NextFunction,
 ) => {
-  const auth = getAuth(req);
-  const clerkId = auth?.userId;
+  try {
+    const auth = getAuth(req);
+    const clerkId = auth?.userId;
 
-  if (!clerkId) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
+    if (!clerkId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const claims = (auth?.sessionClaims ?? {}) as ClerkSessionClaims;
+    const email = claims.email || claims.primaryEmail || "";
+    const name = claims.name || claims.fullName || "";
+
+    const dbUser = await syncUser(clerkId, email, name);
+    if (!dbUser) {
+      res.status(500).json({ error: "Failed to sync user" });
+      return;
+    }
+    req.userId = dbUser.id;
+    req.dbUser = dbUser;
+    next();
+  } catch (err) {
+    console.error("Auth middleware error:", err);
+    res.status(500).json({ error: "Authentication error" });
   }
-
-  const claims = (auth?.sessionClaims ?? {}) as ClerkSessionClaims;
-  const email = claims.email || claims.primaryEmail || "";
-  const name = claims.name || claims.fullName || "";
-
-  const dbUser = await syncUser(clerkId, email, name);
-  if (!dbUser) {
-    res.status(500).json({ error: "Failed to sync user" });
-    return;
-  }
-  req.userId = dbUser.id;
-  req.dbUser = dbUser;
-  next();
 };
 
 export const requireAdmin = async (
