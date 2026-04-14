@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { getAuth } from "@clerk/express";
+import { getAuth, clerkClient } from "@clerk/express";
 import { db, pool } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
@@ -110,8 +110,20 @@ export const requireAuth = async (
     }
 
     const claims = (auth?.sessionClaims ?? {}) as ClerkSessionClaims;
-    const email = claims.email || claims.primaryEmail || "";
-    const name = claims.name || claims.fullName || "";
+    let email = claims.email || claims.primaryEmail || "";
+    let name = claims.name || claims.fullName || "";
+
+    if (!email) {
+      try {
+        const client = await clerkClient();
+        const clerkUser = await client.users.getUser(clerkId);
+        email = clerkUser.emailAddresses?.[0]?.emailAddress || "";
+        if (!name) {
+          name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ");
+        }
+      } catch {
+      }
+    }
 
     const dbUser = await syncUser(clerkId, email, name);
     if (!dbUser) {
