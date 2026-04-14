@@ -3,16 +3,11 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { UserButton } from "@clerk/react";
 import { useLocation, useSearch } from "wouter";
+import { apiFetch } from "@/lib/api";
 import AppBrowser from "./app-browser";
 import RebrandWizard from "./rebrand-wizard";
 import MyBuilds from "./my-builds";
 import BuyCredits from "./buy-credits";
-
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-function apiFetch(path: string, opts?: RequestInit) {
-  return fetch(`${baseUrl}/api${path}`, { credentials: "include", ...opts });
-}
 
 export interface AvailableApp {
   id: number;

@@ -6,12 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Users, ArrowLeft, Download, KeyRound } from "lucide-react";
-
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-function apiFetch(path: string, opts?: RequestInit) {
-  return fetch(`${baseUrl}/api${path}`, { credentials: "include", ...opts });
-}
+import { apiFetch } from "@/lib/api";
 
 interface Customer {
   id: number;
@@ -267,7 +262,7 @@ function CustomerDetailView({ customerId, onBack }: { customerId: number; onBack
                           asChild
                         >
                           <a
-                            href={`${baseUrl}/api/admin/customers/${customer.id}/builds/${b.id}/download`}
+                            href={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/admin/customers/${customer.id}/builds/${b.id}/download`}
                             download
                           >
                             <Download className="h-4 w-4" />

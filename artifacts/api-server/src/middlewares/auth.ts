@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from "express";
-import { getAuth, clerkClient } from "@clerk/express";
 import crypto from "crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { db, pool } from "@workspace/db";
@@ -55,8 +54,10 @@ function getJWKS(): ReturnType<typeof createRemoteJWKSet> | null {
 interface ClerkJwtPayload {
   sub: string;
   email?: string;
-  firstName?: string;
-  lastName?: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  [key: string]: unknown;
 }
 
 async function verifyClerkJwt(token: string): Promise<ClerkJwtPayload | null> {
@@ -81,12 +82,24 @@ function extractSessionToken(req: Request): string | null {
   return null;
 }
 
-async function getClerkEmail(clerkId: string): Promise<{ email: string; name: string }> {
+async function fetchClerkUserInfo(clerkId: string): Promise<{ email: string; name: string }> {
+  const secretKey = process.env.CLERK_SECRET_KEY;
+  if (!secretKey) {
+    logger.warn("No CLERK_SECRET_KEY, cannot fetch user info from Clerk API");
+    return { email: "", name: "" };
+  }
   try {
-    const client = await clerkClient();
-    const clerkUser = await client.users.getUser(clerkId);
-    const email = clerkUser.emailAddresses?.[0]?.emailAddress || "";
-    const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ");
+    const resp = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
+      headers: { Authorization: `Bearer ${secretKey}` },
+    });
+    if (!resp.ok) {
+      logger.warn({ status: resp.status, clerkId }, "Clerk API user fetch failed");
+      return { email: "", name: "" };
+    }
+    const data = await resp.json() as Record<string, unknown>;
+    const emailAddrs = data.email_addresses as Array<{ email_address: string }> | undefined;
+    const email = emailAddrs?.[0]?.email_address || "";
+    const name = [data.first_name, data.last_name].filter(Boolean).join(" ");
     return { email, name };
   } catch (err) {
     logger.warn({ err, clerkId }, "Failed to fetch user from Clerk API");
@@ -206,20 +219,16 @@ export const requireAuth = async (
     }
 
     let clerkId: string | null = null;
+    let jwtEmail = "";
+    let jwtName = "";
 
-    const clerkAuth = getAuth(req);
-    if (clerkAuth?.userId) {
-      clerkId = clerkAuth.userId;
-    }
-
-    if (!clerkId) {
-      const token = extractSessionToken(req);
-      if (token) {
-        const payload = await verifyClerkJwt(token);
-        if (payload?.sub) {
-          clerkId = payload.sub;
-          logger.info({ clerkId }, "Auth: verified via direct JWT");
-        }
+    const token = extractSessionToken(req);
+    if (token) {
+      const payload = await verifyClerkJwt(token);
+      if (payload?.sub) {
+        clerkId = payload.sub;
+        jwtEmail = (payload.email as string) || "";
+        jwtName = [payload.first_name, payload.last_name].filter(Boolean).join(" ");
       }
     }
 
@@ -228,7 +237,13 @@ export const requireAuth = async (
       return;
     }
 
-    const { email, name } = await getClerkEmail(clerkId);
+    let email = jwtEmail;
+    let name = jwtName;
+    if (!email) {
+      const info = await fetchClerkUserInfo(clerkId);
+      email = info.email;
+      name = info.name || name;
+    }
     logger.info({ clerkId, email: email || "(empty)" }, "Auth: resolved user");
 
     const dbUser = await syncUser(clerkId, email, name);

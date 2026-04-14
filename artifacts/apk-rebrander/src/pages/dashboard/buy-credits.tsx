@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, CreditCard, Coins, Receipt, CheckCircle2, XCircle } from "lucide-react";
-
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { apiFetch } from "@/lib/api";
 
 interface CreditPack {
   id: number;
@@ -41,7 +40,7 @@ export default function BuyCredits({ userCredits, paymentStatus }: BuyCreditsPro
   const { data: packs = [], isLoading: packsLoading } = useQuery<CreditPack[]>({
     queryKey: ["customer", "credit-packs"],
     queryFn: async () => {
-      const res = await fetch(`${baseUrl}/api/customer/credit-packs`, { credentials: "include" });
+      const res = await apiFetch("/customer/credit-packs");
       if (!res.ok) throw new Error("Failed to fetch credit packs");
       return res.json();
     },
@@ -50,7 +49,7 @@ export default function BuyCredits({ userCredits, paymentStatus }: BuyCreditsPro
   const { data: transactions = [], isLoading: historyLoading } = useQuery<Transaction[]>({
     queryKey: ["customer", "purchase-history"],
     queryFn: async () => {
-      const res = await fetch(`${baseUrl}/api/customer/purchase-history`, { credentials: "include" });
+      const res = await apiFetch("/customer/purchase-history");
       if (!res.ok) throw new Error("Failed to fetch history");
       return res.json();
     },
@@ -59,9 +58,8 @@ export default function BuyCredits({ userCredits, paymentStatus }: BuyCreditsPro
   const handlePurchase = async (packId: number) => {
     setPurchasing(packId);
     try {
-      const res = await fetch(`${baseUrl}/api/stripe/create-checkout-session`, {
+      const res = await apiFetch("/stripe/create-checkout-session", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ creditPackId: packId }),
       });

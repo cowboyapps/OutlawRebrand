@@ -21,12 +21,7 @@ import {
   Package,
   Unlock,
 } from "lucide-react";
-
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-function apiFetch(path: string, opts?: RequestInit) {
-  return fetch(`${baseUrl}/api${path}`, { credentials: "include", ...opts });
-}
+import { apiFetch } from "@/lib/api";
 
 interface Build {
   id: number;
@@ -65,7 +60,8 @@ export default function MyBuilds({ highlightJobId }: { highlightJobId: number | 
   });
 
   const handleDownload = async (jobId: number) => {
-    window.open(`${baseUrl}/api/customer/builds/${jobId}/download`, "_blank");
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    window.open(`${base}/api/customer/builds/${jobId}/download`, "_blank");
   };
 
   const handleUnlock = async (jobId: number) => {

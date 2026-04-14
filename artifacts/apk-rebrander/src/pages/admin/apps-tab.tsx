@@ -9,12 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, Trash2, Settings, ImageIcon, Loader2, Check, X, Package } from "lucide-react";
-
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-function apiFetch(path: string, opts?: RequestInit) {
-  return fetch(`${baseUrl}/api${path}`, { credentials: "include", ...opts });
-}
+import { apiFetch } from "@/lib/api";
 
 interface AppData {
   id: number;

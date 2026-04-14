@@ -6,8 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Receipt, X } from "lucide-react";
-
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { apiFetch } from "@/lib/api";
 
 interface Transaction {
   id: number;
@@ -37,7 +36,7 @@ export default function PurchasesTab() {
     queryKey: ["admin", "purchases", typeFilter],
     queryFn: async () => {
       const qs = params.toString();
-      const res = await fetch(`${baseUrl}/api/admin/purchases${qs ? `?${qs}` : ""}`, { credentials: "include" });
+      const res = await apiFetch(`/admin/purchases${qs ? `?${qs}` : ""}`);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },

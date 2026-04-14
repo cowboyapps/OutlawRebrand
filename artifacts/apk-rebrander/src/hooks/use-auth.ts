@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/react";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 interface UserData {
   id: number;
@@ -14,16 +14,45 @@ function hasAdminCookie(): boolean {
   return document.cookie.split(";").some((c) => c.trim().startsWith("admin_token="));
 }
 
+export function useAuthFetch() {
+  const { getToken, isSignedIn } = useAuth();
+  
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const headers = new Headers(options.headers);
+    if (isSignedIn) {
+      try {
+        const token = await getToken();
+        if (token) {
+          headers.set("Authorization", `Bearer ${token}`);
+        }
+      } catch {}
+    }
+    return fetch(url, { ...options, headers, credentials: "include" });
+  }, [getToken, isSignedIn]);
+  
+  return authFetch;
+}
+
 export function useCurrentUser() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const isAdminSession = hasAdminCookie();
 
   return useQuery<UserData>({
     queryKey: ["auth", "me"],
     queryFn: async () => {
       const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const headers: Record<string, string> = {};
+      if (isSignedIn) {
+        try {
+          const token = await getToken();
+          if (token) {
+            headers["Authorization"] = `Bearer ${token}`;
+          }
+        } catch {}
+      }
       const res = await fetch(`${baseUrl}/api/auth/me`, {
         credentials: "include",
+        headers,
       });
       if (!res.ok) throw new Error("Failed to fetch user");
       return res.json();

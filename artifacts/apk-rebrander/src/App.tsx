@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser } from "@clerk/react";
+import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser, useAuth } from "@clerk/react";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { setTokenGetter } from "@/lib/api";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import AdminDashboard from "@/pages/admin/index";
@@ -74,6 +75,14 @@ function ClerkQueryClientCacheInvalidator() {
     return unsubscribe;
   }, [addListener, queryClient]);
 
+  return null;
+}
+
+function TokenGetterRegistrar() {
+  const { getToken } = useAuth();
+  useEffect(() => {
+    setTokenGetter(() => getToken());
+  }, [getToken]);
   return null;
 }
 
@@ -174,6 +183,7 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <ClerkQueryClientCacheInvalidator />
+          <TokenGetterRegistrar />
           <Switch>
             <Route path="/" component={HomeRedirect} />
             <Route path="/sign-in/*?" component={SignInPage} />

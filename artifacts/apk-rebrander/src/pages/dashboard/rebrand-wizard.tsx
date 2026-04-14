@@ -18,13 +18,8 @@ import {
   AlertCircle,
   FileOutput,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 import type { AvailableApp, AppImage } from "./index";
-
-const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-function apiFetch(path: string, opts?: RequestInit) {
-  return fetch(`${baseUrl}/api${path}`, { credentials: "include", ...opts });
-}
 
 type WizardStep = "panel-url" | "app-name" | "images" | "filename" | "build";
 
