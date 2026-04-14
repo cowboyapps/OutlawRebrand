@@ -1,18 +1,65 @@
+import { useState } from "react";
+import { useAuth } from "@clerk/react";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { LogOut, Package, Users, CreditCard, Receipt } from "lucide-react";
+import AppsTab from "./apps-tab";
+import CustomersTab from "./customers-tab";
+import CreditPacksTab from "./credit-packs-tab";
+import PurchasesTab from "./purchases-tab";
 
 export default function AdminDashboard() {
   const { data: user } = useCurrentUser();
+  const { signOut } = useAuth();
 
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-bold">Admin Dashboard</h1>
-          <span className="text-sm text-muted-foreground">{user?.email}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">{user?.email}</span>
+            <Button variant="ghost" size="sm" onClick={() => signOut()}>
+              <LogOut className="h-4 w-4 mr-1" />
+              Sign Out
+            </Button>
+          </div>
         </div>
       </div>
-      <div className="container mx-auto px-4 py-8">
-        <p className="text-muted-foreground">Admin panel coming soon. You'll be able to manage apps, customers, and credit packs here.</p>
+      <div className="container mx-auto px-4 py-6">
+        <Tabs defaultValue="apps">
+          <TabsList className="mb-6">
+            <TabsTrigger value="apps" className="gap-1.5">
+              <Package className="h-4 w-4" />
+              Apps
+            </TabsTrigger>
+            <TabsTrigger value="customers" className="gap-1.5">
+              <Users className="h-4 w-4" />
+              Customers
+            </TabsTrigger>
+            <TabsTrigger value="credit-packs" className="gap-1.5">
+              <CreditCard className="h-4 w-4" />
+              Credit Packs
+            </TabsTrigger>
+            <TabsTrigger value="purchases" className="gap-1.5">
+              <Receipt className="h-4 w-4" />
+              Purchases
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="apps">
+            <AppsTab />
+          </TabsContent>
+          <TabsContent value="customers">
+            <CustomersTab />
+          </TabsContent>
+          <TabsContent value="credit-packs">
+            <CreditPacksTab />
+          </TabsContent>
+          <TabsContent value="purchases">
+            <PurchasesTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

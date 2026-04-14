@@ -49,6 +49,15 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 - Schema definitions in `lib/db/src/schema/`
 - Push schema: `pnpm --filter @workspace/db run push`
 
+## Admin Panel
+
+- **Base APK storage**: `data/base-apks/{appId}/` — persistent storage for uploaded APKs and decompiled files
+- Admin API routes at `/api/admin/*` — protected by `requireAuth` + `requireAdmin` middleware
+- Apps: upload/decompile, list, edit, delete, image configuration (select which images customers can replace)
+- Customers: list, detail view with builds and transactions
+- Credit packs: full CRUD
+- Purchases: transaction history with user info
+
 ## APK Processing
 
 - Sessions stored in-memory (Map), work files in `/tmp/apk-rebrander/`
@@ -79,7 +88,12 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 - `artifacts/apk-rebrander/src/App.tsx` — Clerk provider, role-based routing
 - `artifacts/apk-rebrander/src/pages/home.tsx` — 4-step wizard frontend (legacy single-user)
 - `artifacts/apk-rebrander/src/pages/landing.tsx` — public landing page
-- `artifacts/apk-rebrander/src/pages/admin/index.tsx` — admin dashboard placeholder
+- `artifacts/api-server/src/routes/admin.ts` — admin panel API (apps, customers, credit packs, purchases)
+- `artifacts/apk-rebrander/src/pages/admin/index.tsx` — admin dashboard with tabs
+- `artifacts/apk-rebrander/src/pages/admin/apps-tab.tsx` — app management (upload, images, settings)
+- `artifacts/apk-rebrander/src/pages/admin/customers-tab.tsx` — customer list and build history
+- `artifacts/apk-rebrander/src/pages/admin/credit-packs-tab.tsx` — credit pack CRUD
+- `artifacts/apk-rebrander/src/pages/admin/purchases-tab.tsx` — transaction history
 - `artifacts/apk-rebrander/src/pages/dashboard/index.tsx` — customer dashboard placeholder
 - `lib/db/src/schema/` — Drizzle ORM schema definitions
 - `lib/api-spec/openapi.yaml` — API contract
