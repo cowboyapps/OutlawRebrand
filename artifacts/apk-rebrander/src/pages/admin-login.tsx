@@ -27,7 +27,7 @@ export default function AdminLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950">
       <div className="w-full max-w-sm bg-gray-900 border border-gray-800 rounded-lg p-8 shadow-xl">
-        <h1 className="text-2xl font-bold text-white mb-6 text-center">Admin Login</h1>
+        <h1 className="text-2xl font-bold text-white mb-6 text-center">OutlawRebrand Admin</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
