@@ -10,7 +10,7 @@ interface UserData {
 }
 
 export function useCurrentUser() {
-  const { isSignedIn, getToken } = useAuth();
+  const { isSignedIn } = useAuth();
 
   return useQuery<UserData>({
     queryKey: ["auth", "me"],
