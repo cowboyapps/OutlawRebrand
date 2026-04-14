@@ -14,6 +14,12 @@ export const usersTable = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export type UserRole = "admin" | "customer";
+
+export function getUserRole(user: { isAdmin: boolean }): UserRole {
+  return user.isAdmin ? "admin" : "customer";
+}
+
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof usersTable.$inferSelect;
