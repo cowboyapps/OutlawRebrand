@@ -21,6 +21,18 @@ interface Customer {
   createdAt: string;
 }
 
+interface CustomerDetail {
+  id: number;
+  email: string;
+  name: string;
+  credits: number;
+  clerkId: string | null;
+  stripeCustomerId: string | null;
+  createdAt: string;
+  builds: Build[];
+  transactions: Transaction[];
+}
+
 interface Build {
   id: number;
   appName: string;
@@ -32,8 +44,16 @@ interface Build {
   outputPath: string | null;
 }
 
+interface Transaction {
+  id: number;
+  amount: number;
+  type: string;
+  description: string | null;
+  createdAt: string;
+}
+
 export default function CustomersTab() {
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
 
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ["admin", "customers"],
@@ -44,11 +64,11 @@ export default function CustomersTab() {
     },
   });
 
-  if (selectedCustomer) {
+  if (selectedCustomerId !== null) {
     return (
-      <CustomerDetail
-        customer={selectedCustomer}
-        onBack={() => setSelectedCustomer(null)}
+      <CustomerDetailView
+        customerId={selectedCustomerId}
+        onBack={() => setSelectedCustomerId(null)}
       />
     );
   }
@@ -95,7 +115,7 @@ export default function CustomersTab() {
                     {new Date(c.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedCustomer(c)}>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedCustomerId(c.id)}>
                       View Details
                     </Button>
                   </TableCell>
@@ -109,12 +129,21 @@ export default function CustomersTab() {
   );
 }
 
-function CustomerDetail({ customer, onBack }: { customer: Customer; onBack: () => void }) {
+function CustomerDetailView({ customerId, onBack }: { customerId: number; onBack: () => void }) {
   const { toast } = useToast();
+
+  const { data: customer, isLoading } = useQuery<CustomerDetail>({
+    queryKey: ["admin", "customers", customerId],
+    queryFn: async () => {
+      const res = await apiFetch(`/admin/customers/${customerId}`);
+      if (!res.ok) throw new Error("Failed to fetch customer details");
+      return res.json();
+    },
+  });
 
   const resetPasswordMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiFetch(`/admin/customers/${customer.id}/reset-password`, { method: "POST" });
+      const res = await apiFetch(`/admin/customers/${customerId}/reset-password`, { method: "POST" });
       if (!res.ok) throw new Error("Failed to reset");
       return res.json();
     },
@@ -126,20 +155,24 @@ function CustomerDetail({ customer, onBack }: { customer: Customer; onBack: () =
     },
   });
 
-  const { data: builds = [], isLoading } = useQuery<Build[]>({
-    queryKey: ["admin", "customers", customer.id, "builds"],
-    queryFn: async () => {
-      const res = await apiFetch(`/admin/customers/${customer.id}/builds`);
-      if (!res.ok) throw new Error("Failed to fetch builds");
-      return res.json();
-    },
-  });
-
   const statusColor = (status: string) => {
-    if (status === "done" || status === "completed") return "default";
-    if (status === "error" || status === "failed") return "destructive";
-    return "secondary";
+    if (status === "done" || status === "completed") return "default" as const;
+    if (status === "error" || status === "failed") return "destructive" as const;
+    return "secondary" as const;
   };
+
+  if (isLoading || !customer) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 mr-1" /> Back to Customers
+        </Button>
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -169,31 +202,33 @@ function CustomerDetail({ customer, onBack }: { customer: Customer; onBack: () =
               </p>
             </div>
             <div>
+              <p className="text-sm text-muted-foreground">Stripe Customer</p>
+              <p className="font-medium text-xs font-mono">
+                {customer.stripeCustomerId || "Not linked"}
+              </p>
+            </div>
+            <div>
               <p className="text-sm text-muted-foreground">Joined</p>
               <p className="font-medium">{new Date(customer.createdAt).toLocaleDateString()}</p>
             </div>
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => resetPasswordMutation.mutate()}
-                disabled={resetPasswordMutation.isPending}
-              >
-                <KeyRound className="h-4 w-4 mr-1" />
-                Reset Password
-              </Button>
-            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => resetPasswordMutation.mutate()}
+              disabled={resetPasswordMutation.isPending}
+            >
+              <KeyRound className="h-4 w-4 mr-1" />
+              Reset Password
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       <div>
         <h3 className="text-md font-semibold mb-2">Builds</h3>
-        {isLoading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
-        ) : builds.length === 0 ? (
+        {customer.builds.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
               No builds yet.
@@ -213,7 +248,7 @@ function CustomerDetail({ customer, onBack }: { customer: Customer; onBack: () =
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {builds.map((b) => (
+                {customer.builds.map((b) => (
                   <TableRow key={b.id}>
                     <TableCell className="font-medium">{b.appName}</TableCell>
                     <TableCell className="text-muted-foreground">{b.baseAppName || "—"}</TableCell>
@@ -249,6 +284,42 @@ function CustomerDetail({ customer, onBack }: { customer: Customer; onBack: () =
           </Card>
         )}
       </div>
+
+      {customer.transactions.length > 0 && (
+        <div>
+          <h3 className="text-md font-semibold mb-2">Credit Transactions</h3>
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Description</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {customer.transactions.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(t.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{t.type}</Badge>
+                    </TableCell>
+                    <TableCell className={`font-medium ${t.amount > 0 ? "text-green-600" : "text-red-600"}`}>
+                      {t.amount > 0 ? "+" : ""}{t.amount}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {t.description || "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
