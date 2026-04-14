@@ -35,20 +35,50 @@ function getClerkInstanceDomain(): string | null {
   if (!match) return null;
   try {
     const decoded = Buffer.from(match[2], "base64").toString("utf-8").replace(/\$$/, "");
-    return decoded;
+    if (decoded.endsWith(".clerk.accounts.dev") || decoded.endsWith(".clerk.com")) {
+      return decoded;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-let jwksSet: ReturnType<typeof createRemoteJWKSet> | null = null;
-function getJWKS(): ReturnType<typeof createRemoteJWKSet> | null {
-  if (jwksSet) return jwksSet;
-  const domain = getClerkInstanceDomain();
+function getJwksDomainFromToken(token: string): string | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
+    const iss = payload.iss as string;
+    if (iss) {
+      try {
+        const url = new URL(iss);
+        const host = url.hostname;
+        if (host.endsWith(".clerk.accounts.dev") || host.endsWith(".clerk.com") || host.endsWith(".clerk.dev")) {
+          return host;
+        }
+      } catch {}
+    }
+    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf-8"));
+    const kid = header.kid as string;
+    if (kid?.startsWith("ins_")) {
+      return null;
+    }
+  } catch {}
+  return null;
+}
+
+const jwksSets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+function getJWKS(jwksDomain?: string | null): ReturnType<typeof createRemoteJWKSet> | null {
+  const domain = jwksDomain || getClerkInstanceDomain();
   if (!domain) return null;
+  let jwks = jwksSets.get(domain);
+  if (jwks) return jwks;
   const jwksUrl = new URL(`https://${domain}/.well-known/jwks.json`);
-  jwksSet = createRemoteJWKSet(jwksUrl);
-  return jwksSet;
+  jwks = createRemoteJWKSet(jwksUrl);
+  jwksSets.set(domain, jwks);
+  return jwks;
 }
 
 interface ClerkJwtPayload {
@@ -57,24 +87,34 @@ interface ClerkJwtPayload {
   first_name?: string;
   last_name?: string;
   username?: string;
+  iss?: string;
   [key: string]: unknown;
 }
 
 async function verifyClerkJwt(token: string): Promise<ClerkJwtPayload | null> {
-  const domain = getClerkInstanceDomain();
-  logger.info({ domain }, "Auth debug: Clerk instance domain");
-  const jwks = getJWKS();
-  if (!jwks) {
-    logger.warn("Auth debug: No JWKS set available");
-    return null;
+  const tokenDomain = getJwksDomainFromToken(token);
+  const configDomain = getClerkInstanceDomain();
+  const domainsToTry = [
+    tokenDomain,
+    configDomain,
+    "promoted-dolphin-4.clerk.accounts.dev",
+  ].filter((d): d is string => !!d);
+
+  const uniqueDomains = [...new Set(domainsToTry)];
+  logger.info({ uniqueDomains }, "Auth debug: JWKS domains to try");
+
+  for (const domain of uniqueDomains) {
+    const jwks = getJWKS(domain);
+    if (!jwks) continue;
+    try {
+      const { payload } = await jwtVerify(token, jwks);
+      logger.info({ domain }, "Auth debug: JWT verified with domain");
+      return payload as unknown as ClerkJwtPayload;
+    } catch (err: any) {
+      logger.info({ domain, errMessage: err?.message }, "Auth debug: JWT verification failed for domain");
+    }
   }
-  try {
-    const { payload } = await jwtVerify(token, jwks);
-    return payload as unknown as ClerkJwtPayload;
-  } catch (err: any) {
-    logger.warn({ errMessage: err?.message, errCode: err?.code }, "Auth debug: JWT verification failed");
-    return null;
-  }
+  return null;
 }
 
 function extractSessionToken(req: Request): string | null {
