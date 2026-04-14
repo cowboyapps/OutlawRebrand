@@ -2,22 +2,35 @@ import { Request, Response, NextFunction } from "express";
 import { getAuth, clerkClient } from "@clerk/express";
 import { db, pool } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { logger } from "../lib/logger";
 
 export interface AuthRequest extends Request {
   userId?: number;
   dbUser?: typeof usersTable.$inferSelect;
 }
 
-interface ClerkSessionClaims {
-  email?: string;
-  primaryEmail?: string;
-  name?: string;
-  fullName?: string;
-  [key: string]: unknown;
+async function getClerkEmail(clerkId: string): Promise<{ email: string; name: string }> {
+  try {
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(clerkId);
+    const email = clerkUser.emailAddresses?.[0]?.emailAddress || "";
+    const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ");
+    return { email, name };
+  } catch (err) {
+    logger.warn({ err, clerkId }, "Failed to fetch user from Clerk API");
+    return { email: "", name: "" };
+  }
+}
+
+function getAdminEmails(): string[] {
+  return (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
 }
 
 async function syncUser(clerkId: string, email: string, name: string) {
+  const adminEmails = getAdminEmails();
+  const isAdminEmail = !!(email && adminEmails.includes(email.toLowerCase()));
+
   const existing = await db
     .select()
     .from(usersTable)
@@ -25,14 +38,13 @@ async function syncUser(clerkId: string, email: string, name: string) {
     .limit(1);
 
   if (existing.length > 0) {
-    const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
-    const shouldBeAdmin = email && adminEmails.includes(email.toLowerCase());
     const updates: Record<string, unknown> = {};
-    if (email && (!existing[0].email || existing[0].email !== email)) {
+    if (email && existing[0].email !== email) {
       updates.email = email;
     }
-    if (shouldBeAdmin && !existing[0].isAdmin) {
+    if (isAdminEmail && !existing[0].isAdmin) {
       updates.isAdmin = true;
+      logger.info({ clerkId, email }, "Promoting user to admin based on ADMIN_EMAILS");
     }
     if (Object.keys(updates).length > 0) {
       await db
@@ -52,16 +64,19 @@ async function syncUser(clerkId: string, email: string, name: string) {
 
     const countResult = await client.query("SELECT count(*)::int AS cnt FROM users");
     const isFirstUser = (countResult.rows[0]?.cnt ?? 0) === 0;
+    const shouldBeAdmin = isFirstUser || isAdminEmail;
 
-    const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
-    const shouldBeAdmin = isFirstUser || (email && adminEmails.includes(email.toLowerCase()));
+    logger.info({ clerkId, email, isFirstUser, isAdminEmail, shouldBeAdmin }, "Creating new user");
 
     const insertResult = await client.query(
       `INSERT INTO users (clerk_id, email, password_hash, name, is_admin, credits, created_at)
        VALUES ($1, $2, 'clerk-managed', $3, $4, 0, now())
-       ON CONFLICT (clerk_id) DO NOTHING
+       ON CONFLICT (clerk_id) DO UPDATE SET
+         email = EXCLUDED.email,
+         name = EXCLUDED.name,
+         is_admin = EXCLUDED.is_admin OR users.is_admin
        RETURNING *`,
-      [clerkId, email, name || email.split("@")[0], shouldBeAdmin]
+      [clerkId, email, name || email.split("@")[0] || "User", shouldBeAdmin]
     );
 
     await client.query("COMMIT");
@@ -109,21 +124,8 @@ export const requireAuth = async (
       return;
     }
 
-    const claims = (auth?.sessionClaims ?? {}) as ClerkSessionClaims;
-    let email = claims.email || claims.primaryEmail || "";
-    let name = claims.name || claims.fullName || "";
-
-    if (!email) {
-      try {
-        const client = await clerkClient();
-        const clerkUser = await client.users.getUser(clerkId);
-        email = clerkUser.emailAddresses?.[0]?.emailAddress || "";
-        if (!name) {
-          name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ");
-        }
-      } catch {
-      }
-    }
+    const { email, name } = await getClerkEmail(clerkId);
+    logger.info({ clerkId, email: email || "(empty)" }, "Auth: resolved user");
 
     const dbUser = await syncUser(clerkId, email, name);
     if (!dbUser) {
@@ -134,7 +136,7 @@ export const requireAuth = async (
     req.dbUser = dbUser;
     next();
   } catch (err) {
-    console.error("Auth middleware error:", err);
+    logger.error({ err }, "Auth middleware error");
     res.status(500).json({ error: "Authentication error" });
   }
 };
