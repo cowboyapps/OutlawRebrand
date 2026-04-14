@@ -67,7 +67,8 @@ export default function Home() {
     <div className="min-h-screen bg-background text-foreground py-6 sm:py-12 px-3 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
         <div className="mb-6 sm:mb-10 text-center">
-          <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">APK Rebrander</h1>
+          <img src="/assets/outlaw-rebrand-logo.png" alt="OutlawRebrand" className="mx-auto h-16 sm:h-20 mb-3" />
+          <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">OutlawRebrand</h1>
           <p className="mt-1 sm:mt-2 text-sm sm:text-lg text-muted-foreground">Decompile, rebrand, and rebuild your panel applications.</p>
         </div>
 

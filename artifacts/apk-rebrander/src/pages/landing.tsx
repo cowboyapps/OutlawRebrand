@@ -7,7 +7,8 @@ export default function Landing() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-background to-muted/30 px-4">
       <div className="text-center max-w-2xl">
-        <h1 className="text-4xl font-bold tracking-tight mb-4">APK Rebrander</h1>
+        <img src="/assets/outlaw-rebrand-logo.png" alt="OutlawRebrand" className="mx-auto h-40 sm:h-52 mb-6" />
+        <h1 className="text-4xl font-bold tracking-tight mb-4">OutlawRebrand</h1>
         <p className="text-lg text-muted-foreground mb-8">
           Rebrand your panel applications with custom names, icons, and panel URLs. Fast, easy, and professional.
         </p>
