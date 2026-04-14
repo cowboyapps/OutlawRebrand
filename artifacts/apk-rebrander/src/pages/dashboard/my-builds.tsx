@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ import {
   Clock,
   Hammer,
   Package,
+  Unlock,
 } from "lucide-react";
 
 const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -29,6 +31,7 @@ function apiFetch(path: string, opts?: RequestInit) {
 interface Build {
   id: number;
   appName: string;
+  outputFileName: string | null;
   status: string;
   creditsCost: number;
   creditsDeducted: boolean;
@@ -47,6 +50,10 @@ const statusConfig: Record<string, { icon: React.ReactNode; label: string; varia
 };
 
 export default function MyBuilds({ highlightJobId }: { highlightJobId: number | null }) {
+  const queryClient = useQueryClient();
+  const [unlocking, setUnlocking] = useState<number | null>(null);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+
   const { data: builds = [], isLoading } = useQuery<Build[]>({
     queryKey: ["customer", "builds"],
     queryFn: async () => {
@@ -59,6 +66,24 @@ export default function MyBuilds({ highlightJobId }: { highlightJobId: number | 
 
   const handleDownload = async (jobId: number) => {
     window.open(`${baseUrl}/api/customer/builds/${jobId}/download`, "_blank");
+  };
+
+  const handleUnlock = async (jobId: number) => {
+    setUnlocking(jobId);
+    setUnlockError(null);
+    try {
+      const res = await apiFetch(`/customer/builds/${jobId}/unlock`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || data.message || "Failed to unlock");
+      }
+      queryClient.invalidateQueries({ queryKey: ["customer", "builds"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+    } catch (err: unknown) {
+      setUnlockError(err instanceof Error ? err.message : "Failed to unlock");
+    } finally {
+      setUnlocking(null);
+    }
   };
 
   if (isLoading) {
@@ -90,11 +115,17 @@ export default function MyBuilds({ highlightJobId }: { highlightJobId: number | 
             <CardTitle>Build History</CardTitle>
           </CardHeader>
           <CardContent>
+            {unlockError && (
+              <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive">
+                {unlockError}
+              </div>
+            )}
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>App</TableHead>
                   <TableHead>Custom Name</TableHead>
+                  <TableHead>File Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Credits</TableHead>
                   <TableHead>Date</TableHead>
@@ -114,6 +145,9 @@ export default function MyBuilds({ highlightJobId }: { highlightJobId: number | 
                         {build.baseAppName || "Unknown"}
                       </TableCell>
                       <TableCell>{build.appName}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground font-mono">
+                        {build.outputFileName || "-"}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={config.variant} className="gap-1">
                           {config.icon} {config.label}
@@ -143,7 +177,19 @@ export default function MyBuilds({ highlightJobId }: { highlightJobId: number | 
                           </Button>
                         )}
                         {build.status === "done" && !build.creditsDeducted && (
-                          <span className="text-xs text-muted-foreground">Need credits</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleUnlock(build.id)}
+                            disabled={unlocking === build.id}
+                          >
+                            {unlocking === build.id ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Unlock className="h-4 w-4 mr-1" />
+                            )}
+                            Unlock ({build.creditsCost} cr)
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>

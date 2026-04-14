@@ -9,6 +9,7 @@ export const customerBuildsTable = pgTable("rebrand_jobs", {
   userId: integer("user_id").notNull().references(() => usersTable.id),
   baseApkId: integer("base_apk_id").notNull().references(() => appsTable.id),
   appName: text("app_name").notNull(),
+  outputFileName: text("output_file_name"),
   status: text("status").notNull().default("pending"),
   sessionId: text("session_id"),
   outputPath: text("output_path"),

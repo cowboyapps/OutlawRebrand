@@ -103,11 +103,15 @@ router.get("/customer/apps", async (req: AuthRequest, res: Response) => {
 
 router.post("/customer/rebrand/start", async (req: AuthRequest, res: Response) => {
   try {
-    const { appId, appName } = req.body;
+    const { appId, appName, outputFileName } = req.body;
     if (!appId || !appName) {
       res.status(400).json({ error: "appId and appName are required" });
       return;
     }
+
+    const sanitizedFileName = outputFileName
+      ? String(outputFileName).trim().replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.apk$/i, "") + ".apk"
+      : undefined;
 
     const [app] = await db
       .select()
@@ -141,6 +145,7 @@ router.post("/customer/rebrand/start", async (req: AuthRequest, res: Response) =
         userId: req.userId!,
         baseApkId: app.id,
         appName: String(appName).trim(),
+        outputFileName: sanitizedFileName || `${String(appName).trim().replace(/[^a-zA-Z0-9._-]/g, "_")}.apk`,
         status: "preparing",
         sessionId,
         creditsCost: app.creditCost,
@@ -713,12 +718,118 @@ async function runBuild(
   }
 }
 
+router.put("/customer/rebrand/:jobId/output-filename", async (req: AuthRequest, res: Response) => {
+  try {
+    const jobId = Number(req.params.jobId);
+    const session = rebrandSessions.get(jobId);
+    if (!session || session.userId !== req.userId) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    if (session.status !== "ready") {
+      res.status(400).json({ error: "Session not ready for editing" });
+      return;
+    }
+
+    const { outputFileName } = req.body;
+    if (!outputFileName || typeof outputFileName !== "string") {
+      res.status(400).json({ error: "outputFileName is required" });
+      return;
+    }
+
+    const sanitized = outputFileName.trim().replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.apk$/i, "") + ".apk";
+
+    await db
+      .update(customerBuildsTable)
+      .set({ outputFileName: sanitized })
+      .where(eq(customerBuildsTable.id, jobId));
+
+    res.json({ success: true, outputFileName: sanitized });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to update output filename";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post("/customer/builds/:jobId/unlock", async (req: AuthRequest, res: Response) => {
+  try {
+    const jobId = Number(req.params.jobId);
+
+    const [job] = await db
+      .select()
+      .from(customerBuildsTable)
+      .where(
+        and(
+          eq(customerBuildsTable.id, jobId),
+          eq(customerBuildsTable.userId, req.userId!)
+        )
+      )
+      .limit(1);
+
+    if (!job) {
+      res.status(404).json({ error: "Build not found" });
+      return;
+    }
+
+    if (job.status !== "done") {
+      res.status(400).json({ error: "Build is not complete" });
+      return;
+    }
+
+    if (job.creditsDeducted) {
+      res.json({ success: true, message: "Build already unlocked" });
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const creditCheck = await client.query(
+        "UPDATE users SET credits = credits - $1 WHERE id = $2 AND credits >= $1 RETURNING credits",
+        [job.creditsCost, req.userId]
+      );
+      if (creditCheck.rows.length === 0) {
+        await client.query("ROLLBACK");
+        res.status(402).json({
+          error: "Insufficient credits",
+          needed: job.creditsCost,
+          message: "Purchase more credits to unlock this build.",
+        });
+        return;
+      }
+
+      await client.query(
+        `INSERT INTO credit_transactions (user_id, amount, type, description, rebrand_job_id, created_at)
+         VALUES ($1, $2, 'deduction', $3, $4, now())`,
+        [req.userId, -job.creditsCost, `Rebrand build #${jobId}`, jobId]
+      );
+
+      await client.query(
+        "UPDATE rebrand_jobs SET credits_deducted = true WHERE id = $1",
+        [jobId]
+      );
+
+      await client.query("COMMIT");
+      res.json({ success: true, message: "Build unlocked! You can now download it.", remainingCredits: creditCheck.rows[0].credits });
+    } catch (txErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to unlock build";
+    res.status(500).json({ error: message });
+  }
+});
+
 router.get("/customer/builds", async (req: AuthRequest, res: Response) => {
   try {
     const builds = await db
       .select({
         id: customerBuildsTable.id,
         appName: customerBuildsTable.appName,
+        outputFileName: customerBuildsTable.outputFileName,
         status: customerBuildsTable.status,
         creditsCost: customerBuildsTable.creditsCost,
         creditsDeducted: customerBuildsTable.creditsDeducted,
@@ -781,7 +892,7 @@ router.get("/customer/builds/:jobId/download", async (req: AuthRequest, res: Res
       return;
     }
 
-    const outputName = `${job.appName.replace(/[^a-zA-Z0-9._-]/g, "_")}.apk`;
+    const outputName = job.outputFileName || `${job.appName.replace(/[^a-zA-Z0-9._-]/g, "_")}.apk`;
     const stat = await fs.stat(job.outputPath);
     res.setHeader("Content-Disposition", `attachment; filename="${outputName}"`);
     res.setHeader("Content-Type", "application/vnd.android.package-archive");

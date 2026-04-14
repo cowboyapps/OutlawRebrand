@@ -16,6 +16,7 @@ import {
   Loader2,
   Upload,
   AlertCircle,
+  FileOutput,
 } from "lucide-react";
 import type { AvailableApp, AppImage } from "./index";
 
@@ -25,12 +26,13 @@ function apiFetch(path: string, opts?: RequestInit) {
   return fetch(`${baseUrl}/api${path}`, { credentials: "include", ...opts });
 }
 
-type WizardStep = "panel-url" | "app-name" | "images" | "build";
+type WizardStep = "panel-url" | "app-name" | "images" | "filename" | "build";
 
 const steps: { key: WizardStep; label: string; icon: React.ReactNode }[] = [
   { key: "panel-url", label: "Panel URL", icon: <Globe className="h-4 w-4" /> },
   { key: "app-name", label: "App Name", icon: <Type className="h-4 w-4" /> },
   { key: "images", label: "Images", icon: <ImageIcon className="h-4 w-4" /> },
+  { key: "filename", label: "File Name", icon: <FileOutput className="h-4 w-4" /> },
   { key: "build", label: "Build", icon: <Hammer className="h-4 w-4" /> },
 ];
 
@@ -70,6 +72,11 @@ export default function RebrandWizard({
   const [appNameSaved, setAppNameSaved] = useState(false);
   const [appNameSaving, setAppNameSaving] = useState(false);
   const [appNameError, setAppNameError] = useState<string | null>(null);
+
+  const [outputFileName, setOutputFileName] = useState("");
+  const [fileNameSaved, setFileNameSaved] = useState(false);
+  const [fileNameSaving, setFileNameSaving] = useState(false);
+  const [fileNameError, setFileNameError] = useState<string | null>(null);
 
   const [images, setImages] = useState<RebrandImage[]>([]);
   const [imagesLoading, setImagesLoading] = useState(false);
@@ -173,6 +180,28 @@ export default function RebrandWizard({
       setAppNameError(err instanceof Error ? err.message : "Failed to save app name");
     } finally {
       setAppNameSaving(false);
+    }
+  };
+
+  const saveFileName = async () => {
+    if (!jobId || !outputFileName.trim()) return;
+    setFileNameSaving(true);
+    setFileNameError(null);
+    try {
+      const res = await apiFetch(`/customer/rebrand/${jobId}/output-filename`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outputFileName: outputFileName.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to save filename" }));
+        throw new Error(err.error || "Failed to save filename");
+      }
+      setFileNameSaved(true);
+    } catch (err: unknown) {
+      setFileNameError(err instanceof Error ? err.message : "Failed to save filename");
+    } finally {
+      setFileNameSaving(false);
     }
   };
 
@@ -463,10 +492,58 @@ export default function RebrandWizard({
             )}
             <Button
               variant="outline"
-              onClick={() => setStep("build")}
+              onClick={() => setStep("filename")}
             >
-              Continue to Build <ArrowRight className="h-4 w-4 ml-1" />
+              Continue <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {step === "filename" && (
+        <Card className="max-w-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileOutput className="h-5 w-5" /> Output File Name
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Choose a name for the output APK file. This will be the filename when you download the built app.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="outputFileName">File Name</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="outputFileName"
+                  placeholder={appName || app.name}
+                  value={outputFileName}
+                  onChange={(e) => { setOutputFileName(e.target.value); setFileNameSaved(false); }}
+                />
+                <span className="text-sm text-muted-foreground shrink-0">.apk</span>
+              </div>
+            </div>
+            {fileNameError && (
+              <p className="text-sm text-destructive flex items-center gap-1">
+                <AlertCircle className="h-4 w-4" /> {fileNameError}
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={saveFileName}
+                disabled={!outputFileName.trim() || fileNameSaving}
+              >
+                {fileNameSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {fileNameSaved ? "Saved" : "Save File Name"}
+                {fileNameSaved && <Check className="h-4 w-4 ml-1" />}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setStep("build")}
+              >
+                {fileNameSaved ? "Next" : "Skip"} <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -488,6 +565,7 @@ export default function RebrandWizard({
                   <p><span className="font-medium">App:</span> {app.name}</p>
                   {panelUrlSaved && <p><span className="font-medium">Panel URL:</span> {panelUrl}</p>}
                   {appNameSaved && <p><span className="font-medium">Custom Name:</span> {appName}</p>}
+                  {fileNameSaved && <p><span className="font-medium">Output File:</span> {outputFileName}.apk</p>}
                   <p><span className="font-medium">Images Replaced:</span> {images.filter(i => i.replaced).length} / {images.length}</p>
                   <p><span className="font-medium">Cost:</span> {app.creditCost} credit{app.creditCost !== 1 ? "s" : ""}</p>
                 </div>
