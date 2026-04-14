@@ -55,9 +55,8 @@ router.post("/stripe/create-checkout-session", requireAuth, async (req: AuthRequ
         .where(eq(usersTable.id, user.id));
     }
 
-    const host = req.get("host") || "";
-    const protocol = req.get("x-forwarded-proto") || req.protocol;
-    const baseUrl = `${protocol}://${host}`;
+    const appBaseUrl = process.env.APP_BASE_URL
+      || `${req.get("x-forwarded-proto") || req.protocol}://${req.get("host") || ""}`;
 
     const session = await stripe.checkout.sessions.create({
       customer: stripeCustomerId,
@@ -76,8 +75,8 @@ router.post("/stripe/create-checkout-session", requireAuth, async (req: AuthRequ
         },
       ],
       mode: "payment",
-      success_url: `${baseUrl}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/dashboard?payment=cancelled`,
+      success_url: `${appBaseUrl}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appBaseUrl}/dashboard?payment=cancelled`,
       metadata: {
         creditPackId: String(pack.id),
         userId: String(user.id),
