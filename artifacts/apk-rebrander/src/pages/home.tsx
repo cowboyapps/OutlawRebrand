@@ -843,12 +843,9 @@ function BuildProgressSteps({ progress }: { progress?: string }) {
   const prevIndexRef = useRef(0);
   const activeIndex = useMemo(() => {
     const matched = getActiveStepIndex(progress);
-    if (matched >= 0) {
-      const next = Math.max(matched, prevIndexRef.current);
-      prevIndexRef.current = next;
-      return next;
-    }
-    return prevIndexRef.current;
+    const next = Math.max(matched, prevIndexRef.current);
+    prevIndexRef.current = next;
+    return next;
   }, [progress]);
 
   return (
