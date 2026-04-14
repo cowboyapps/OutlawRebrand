@@ -840,7 +840,16 @@ function getActiveStepIndex(progress: string | undefined): number {
 }
 
 function BuildProgressSteps({ progress }: { progress?: string }) {
-  const activeIndex = useMemo(() => getActiveStepIndex(progress), [progress]);
+  const prevIndexRef = useRef(0);
+  const activeIndex = useMemo(() => {
+    const matched = getActiveStepIndex(progress);
+    if (matched >= 0) {
+      const next = Math.max(matched, prevIndexRef.current);
+      prevIndexRef.current = next;
+      return next;
+    }
+    return prevIndexRef.current;
+  }, [progress]);
 
   return (
     <div className="w-full max-w-sm mx-auto">
@@ -852,7 +861,7 @@ function BuildProgressSteps({ progress }: { progress?: string }) {
         </div>
       </div>
       <div className="space-y-1">
-        {BUILD_STEPS.filter(s => s.key !== "done").map((step, i) => {
+        {BUILD_STEPS.map((step, i) => {
           const isDone = i < activeIndex;
           const isActive = i === activeIndex;
           return (
