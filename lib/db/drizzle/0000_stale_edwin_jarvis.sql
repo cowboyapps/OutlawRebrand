@@ -36,6 +36,14 @@ CREATE TABLE "app_images" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "credits" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"balance" integer DEFAULT 0 NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "credits_user_id_unique" UNIQUE("user_id")
+);
+--> statement-breakpoint
 CREATE TABLE "rebrand_jobs" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer NOT NULL,
@@ -73,6 +81,7 @@ CREATE TABLE "credit_packages" (
 );
 --> statement-breakpoint
 ALTER TABLE "app_images" ADD CONSTRAINT "app_images_app_id_base_apks_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."base_apks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "credits" ADD CONSTRAINT "credits_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "rebrand_jobs" ADD CONSTRAINT "rebrand_jobs_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "rebrand_jobs" ADD CONSTRAINT "rebrand_jobs_base_apk_id_base_apks_id_fk" FOREIGN KEY ("base_apk_id") REFERENCES "public"."base_apks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "credit_transactions" ADD CONSTRAINT "credit_transactions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
