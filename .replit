@@ -32,4 +32,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-ADMIN_EMAILS = "eric@ericsanger.com"
+ADMIN_EMAILS = "eric@ericsanger.com,info@cowboyapps.net"
