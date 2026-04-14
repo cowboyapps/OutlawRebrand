@@ -89,6 +89,8 @@ export default function AppsTab() {
     },
   });
 
+  const [uploadProgress, setUploadProgress] = useState(0);
+
   const handleUpload = async () => {
     const file = fileInputRef.current?.files?.[0];
     if (!file) {
@@ -96,24 +98,64 @@ export default function AppsTab() {
       return;
     }
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const formData = new FormData();
-      formData.append("apk", file);
-      formData.append("name", uploadName || file.name.replace(/\.apk$/i, ""));
-      formData.append("creditCost", uploadCost);
+      const CHUNK_SIZE = 5 * 1024 * 1024;
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      const appName = uploadName || file.name.replace(/\.apk$/i, "");
 
-      const res = await apiFetch("/admin/apps/upload", {
+      const initRes = await apiFetch("/admin/apps/upload/init", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileSize: file.size,
+          name: appName,
+          creditCost: uploadCost,
+        }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Upload failed");
+      if (!initRes.ok) {
+        const err = await initRes.json();
+        throw new Error(err.error || "Failed to start upload");
       }
+      const { uploadId } = await initRes.json();
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
+
+        const chunkForm = new FormData();
+        chunkForm.append("chunk", chunk);
+        chunkForm.append("uploadId", uploadId);
+        chunkForm.append("chunkIndex", String(i));
+
+        const chunkRes = await apiFetch("/admin/apps/upload/chunk", {
+          method: "POST",
+          body: chunkForm,
+        });
+        if (!chunkRes.ok) {
+          const err = await chunkRes.json();
+          throw new Error(err.error || `Chunk ${i} failed`);
+        }
+        setUploadProgress(Math.round(((i + 1) / totalChunks) * 100));
+      }
+
+      const completeRes = await apiFetch("/admin/apps/upload/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadId }),
+      });
+      if (!completeRes.ok) {
+        const err = await completeRes.json();
+        throw new Error(err.error || "Failed to finalize upload");
+      }
+
       toast({ title: "Upload started", description: "The APK is being decompiled. This may take a few minutes." });
       setShowUpload(false);
       setUploadName("");
       setUploadCost("1");
+      setUploadProgress(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ["admin", "apps"] }), 5000);
     } catch (err) {
@@ -234,11 +276,25 @@ export default function AppsTab() {
               <Input type="number" min="1" value={uploadCost} onChange={(e) => setUploadCost(e.target.value)} disabled={uploading} />
             </div>
           </div>
+          {uploading && uploadProgress > 0 && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Uploading...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-2">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowUpload(false)} disabled={uploading}>Cancel</Button>
             <Button onClick={handleUpload} disabled={uploading}>
               {uploading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Upload
+              {uploading ? `Uploading ${uploadProgress}%` : "Upload"}
             </Button>
           </DialogFooter>
         </DialogContent>

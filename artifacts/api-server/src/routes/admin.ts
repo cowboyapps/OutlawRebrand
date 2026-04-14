@@ -3,7 +3,9 @@ import multer from "multer";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
 import path from "path";
+import crypto from "crypto";
 import sharp from "sharp";
 import { db } from "@workspace/db";
 import {
@@ -22,6 +24,7 @@ const execFileAsync = promisify(execFile);
 const router = Router();
 
 const BASE_APKS_DIR = path.resolve("/home/runner/workspace/data/base-apks");
+const CHUNK_DIR = path.join(BASE_APKS_DIR, "chunks");
 
 const upload = multer({
   dest: path.join(BASE_APKS_DIR, "tmp"),
@@ -34,6 +37,24 @@ const upload = multer({
     }
   },
 });
+
+const chunkUpload = multer({
+  dest: path.join(BASE_APKS_DIR, "tmp"),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+interface PendingAdminUpload {
+  fileName: string;
+  fileSize: number;
+  totalChunks: number;
+  receivedChunks: Set<number>;
+  chunkDir: string;
+  name: string;
+  creditCost: number;
+  createdAt: number;
+}
+
+const pendingAdminUploads = new Map<string, PendingAdminUpload>();
 
 async function findApktool(): Promise<string> {
   const candidates = ["apktool", "/nix/var/nix/profiles/default/bin/apktool"];
@@ -138,6 +159,157 @@ router.post("/admin/apps/upload", upload.single("apk"), async (req: AuthRequest,
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Upload failed";
+    res.status(500).json({ error: message });
+  }
+});
+
+const CHUNK_SIZE = 5 * 1024 * 1024;
+
+router.post("/admin/apps/upload/init", async (req: AuthRequest, res: Response) => {
+  try {
+    const { fileName, fileSize, name, creditCost } = req.body;
+    if (!fileName || !fileSize) {
+      res.status(400).json({ error: "fileName and fileSize are required" });
+      return;
+    }
+
+    const uploadId = crypto.randomBytes(16).toString("hex");
+    const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+    const chunkDir = path.join(CHUNK_DIR, uploadId);
+    await fs.mkdir(chunkDir, { recursive: true });
+
+    pendingAdminUploads.set(uploadId, {
+      fileName,
+      fileSize,
+      totalChunks,
+      receivedChunks: new Set(),
+      chunkDir,
+      name: String(name || fileName.replace(/\.apk$/i, "")),
+      creditCost: Number(creditCost) || 1,
+      createdAt: Date.now(),
+    });
+
+    for (const [id, pu] of pendingAdminUploads) {
+      if (id !== uploadId && Date.now() - pu.createdAt > 30 * 60 * 1000) {
+        await fs.rm(pu.chunkDir, { recursive: true, force: true }).catch(() => {});
+        pendingAdminUploads.delete(id);
+      }
+    }
+
+    logger.info({ uploadId, fileName, fileSize, totalChunks }, "Admin chunked upload initialized");
+    res.json({ uploadId, totalChunks, chunkSize: CHUNK_SIZE });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Init failed";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post("/admin/apps/upload/chunk", chunkUpload.single("chunk"), async (req: AuthRequest, res: Response) => {
+  try {
+    const uploadId = String(req.body.uploadId || "");
+    const chunkIndex = Number(req.body.chunkIndex);
+    const pending = pendingAdminUploads.get(uploadId);
+
+    if (!pending) {
+      res.status(404).json({ error: "Upload session not found" });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ error: "No chunk data" });
+      return;
+    }
+
+    const chunkPath = path.join(pending.chunkDir, `chunk_${String(chunkIndex).padStart(6, "0")}`);
+    await fs.rename(req.file.path, chunkPath);
+    pending.receivedChunks.add(chunkIndex);
+
+    res.json({ uploadId, chunkIndex, received: pending.receivedChunks.size, total: pending.totalChunks });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Chunk upload failed";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post("/admin/apps/upload/complete", async (req: AuthRequest, res: Response) => {
+  try {
+    const uploadId = String(req.body.uploadId || "");
+    const pending = pendingAdminUploads.get(uploadId);
+
+    if (!pending) {
+      res.status(404).json({ error: "Upload session not found" });
+      return;
+    }
+
+    if (pending.receivedChunks.size < pending.totalChunks) {
+      res.status(400).json({ error: `Missing chunks: received ${pending.receivedChunks.size}/${pending.totalChunks}` });
+      return;
+    }
+
+    const name = pending.name.trim();
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const creditCost = Math.max(1, Math.floor(pending.creditCost));
+
+    const [inserted] = await db
+      .insert(appsTable)
+      .values({ name, slug, creditCost, filePath: "", isActive: true })
+      .returning();
+
+    const appDir = path.join(BASE_APKS_DIR, String(inserted.id));
+    await fs.mkdir(appDir, { recursive: true });
+
+    const safeName = path.basename(pending.fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const apkPath = path.join(appDir, safeName);
+
+    const writeStream = createWriteStream(apkPath);
+    for (let i = 0; i < pending.totalChunks; i++) {
+      const chunkPath = path.join(pending.chunkDir, `chunk_${String(i).padStart(6, "0")}`);
+      const chunkData = await fs.readFile(chunkPath);
+      writeStream.write(chunkData);
+    }
+    await new Promise<void>((resolve, reject) => {
+      writeStream.on("finish", resolve);
+      writeStream.on("error", reject);
+      writeStream.end();
+    });
+
+    await fs.rm(pending.chunkDir, { recursive: true, force: true }).catch(() => {});
+    pendingAdminUploads.delete(uploadId);
+
+    await db.update(appsTable).set({ filePath: apkPath }).where(eq(appsTable.id, inserted.id));
+
+    const decompDir = path.join(appDir, "decompiled");
+
+    res.json({ id: inserted.id, name, slug, status: "decompiling" });
+
+    try {
+      const apktoolCmd = await getApktoolPath();
+      await execFileAsync(apktoolCmd, ["d", "-f", "-o", decompDir, apkPath], {
+        timeout: 300000,
+        maxBuffer: 50 * 1024 * 1024,
+      });
+
+      const manifestPath = path.join(decompDir, "AndroidManifest.xml");
+      const manifest = await fs.readFile(manifestPath, "utf-8");
+      const packageMatch = manifest.match(/package="([^"]+)"/);
+      const versionMatch = manifest.match(/android:versionName="([^"]+)"/);
+
+      await db
+        .update(appsTable)
+        .set({
+          packageName: packageMatch ? packageMatch[1] : null,
+          versionName: versionMatch ? versionMatch[1] : null,
+        })
+        .where(eq(appsTable.id, inserted.id));
+
+      logger.info(`App ${inserted.id} decompiled successfully (chunked upload)`);
+    } catch (err) {
+      logger.error({ err }, `Failed to decompile app ${inserted.id}`);
+      await db.delete(appsTable).where(eq(appsTable.id, inserted.id));
+      await fs.rm(appDir, { recursive: true, force: true }).catch(() => {});
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Upload completion failed";
     res.status(500).json({ error: message });
   }
 });
