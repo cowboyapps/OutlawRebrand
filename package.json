@@ -18,8 +18,5 @@
       "sharp"
     ]
   },
-  "dependencies": {
-    "stripe": "^22.0.1",
-    "stripe-replit-sync": "^1.0.0"
-  }
+  "dependencies": {}
 }

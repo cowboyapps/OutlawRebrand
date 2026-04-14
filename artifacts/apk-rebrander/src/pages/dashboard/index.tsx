@@ -90,7 +90,7 @@ export default function CustomerDashboard() {
       <div className="border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold">OutlawRebrand</h1>
+            <h1 className="text-xl font-bold">APK Rebrander</h1>
             <nav className="flex gap-2">
               <button
                 onClick={() => { handleBackToBrowse(); }}
