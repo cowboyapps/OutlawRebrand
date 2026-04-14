@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload, Settings, Image as ImageIcon, Package, Check, Download, AlertCircle, FileArchive, Loader2, ArrowRight, Search, Circle } from "lucide-react";
+import { Upload, Settings, Image as ImageIcon, Package, Check, Download, AlertCircle, FileArchive, Loader2, ArrowRight, Search, Circle, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -805,6 +805,66 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
   );
 }
 
+const BUILD_STEPS = [
+  { key: "clean", label: "Cleaning resources", patterns: ["Cleaning up resources", "Starting recompilation"] },
+  { key: "fix", label: "Fixing resource issues", patterns: ["Fixing resource issues", "Fixing numeric", "numeric resource"] },
+  { key: "recompile", label: "Recompiling APK", patterns: ["Recompiling APK", "Fixing", "resource error"] },
+  { key: "postbuild", label: "Finalizing APK", patterns: ["Cleaning up APK", "Restoring encrypted"] },
+  { key: "align", label: "Aligning APK", patterns: ["Aligning APK"] },
+  { key: "sign", label: "Signing APK", patterns: ["Signing APK", "Generating signing key"] },
+];
+
+function getActiveStepIndex(progress: string | undefined): number {
+  if (!progress) return 0;
+  for (let i = BUILD_STEPS.length - 1; i >= 0; i--) {
+    if (BUILD_STEPS[i].patterns.some(p => progress.includes(p))) return i;
+  }
+  return 0;
+}
+
+function BuildProgressSteps({ progress }: { progress?: string }) {
+  const activeIndex = useMemo(() => getActiveStepIndex(progress), [progress]);
+
+  return (
+    <div className="w-full max-w-sm mx-auto">
+      <div className="flex items-center gap-3 mb-6">
+        <Loader2 className="h-8 w-8 text-primary animate-spin shrink-0" />
+        <div>
+          <h3 className="text-lg font-medium">Building APK...</h3>
+          <p className="text-xs text-muted-foreground">This may take a few minutes</p>
+        </div>
+      </div>
+      <div className="space-y-1">
+        {BUILD_STEPS.map((step, i) => {
+          const isDone = i < activeIndex;
+          const isActive = i === activeIndex;
+          return (
+            <div key={step.key} className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors ${isActive ? "bg-primary/5" : ""}`}>
+              <div className="mt-0.5 shrink-0">
+                {isDone ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                ) : isActive ? (
+                  <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                ) : (
+                  <Circle className="h-5 w-5 text-muted-foreground/30" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className={`text-sm font-medium leading-tight ${isDone ? "text-green-600" : isActive ? "text-foreground" : "text-muted-foreground/50"}`}>
+                  {step.label}
+                </p>
+                {isActive && progress && (
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{progress}</p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function StepBuild({ sessionId, status, statusData, onBack, onBuildTriggered }: { sessionId: string, status?: string, statusData: SessionStatus | undefined, onBack: () => void, onBuildTriggered: () => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -864,14 +924,7 @@ function StepBuild({ sessionId, status, statusData, onBack, onBuildTriggered }: 
               </div>
             </>
           ) : status === "recompiling" || isTriggering ? (
-            <>
-              <Loader2 className="h-16 w-16 text-primary animate-spin" />
-              <div className="text-center max-w-md w-full">
-                <h3 className="text-lg font-medium mb-2">Recompiling APK...</h3>
-                <p className="text-sm text-muted-foreground mb-4">{statusData?.progress || "Signing and aligning the APK. This will take a moment."}</p>
-                <Progress value={undefined} className="w-full animate-pulse" />
-              </div>
-            </>
+            <BuildProgressSteps progress={statusData?.progress} />
           ) : status === "done" ? (
             <>
               <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center text-primary">
