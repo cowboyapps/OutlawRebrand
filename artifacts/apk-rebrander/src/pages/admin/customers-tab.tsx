@@ -149,7 +149,7 @@ function CustomerDetail({ customer, onBack }: { customer: Customer; onBack: () =
 
       <Card>
         <CardContent className="py-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Name</p>
               <p className="font-medium">{customer.name}</p>
@@ -161,6 +161,12 @@ function CustomerDetail({ customer, onBack }: { customer: Customer; onBack: () =
             <div>
               <p className="text-sm text-muted-foreground">Credits</p>
               <p className="font-medium">{customer.credits}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Auth Account</p>
+              <p className="font-medium text-xs font-mono">
+                {customer.clerkId ? `Linked (${customer.clerkId.slice(0, 12)}…)` : "Not linked"}
+              </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Joined</p>

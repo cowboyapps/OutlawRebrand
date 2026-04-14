@@ -253,7 +253,8 @@ router.get("/admin/apps/:id/image", async (req: AuthRequest, res: Response) => {
     const fullPath = path.join(decompDir, imagePath);
 
     const resolved = path.resolve(fullPath);
-    if (!resolved.startsWith(path.resolve(decompDir))) {
+    const baseDir = path.resolve(decompDir) + path.sep;
+    if (!resolved.startsWith(baseDir) && resolved !== path.resolve(decompDir)) {
       res.status(403).json({ error: "Access denied" });
       return;
     }
@@ -444,6 +445,8 @@ router.get("/admin/customers/:id", async (req: AuthRequest, res: Response) => {
       email: customer.email,
       name: customer.name,
       credits: customer.credits,
+      clerkId: customer.clerkId,
+      stripeCustomerId: customer.stripeCustomerId,
       createdAt: customer.createdAt,
       builds,
       transactions,
@@ -564,21 +567,21 @@ router.get("/admin/credit-packs", async (_req: AuthRequest, res: Response) => {
 
 router.post("/admin/credit-packs", async (req: AuthRequest, res: Response) => {
   try {
-    const { name, credits, priceUsd } = req.body;
+    const { name, credits, priceCents } = req.body;
 
-    if (!name || credits === undefined || priceUsd === undefined) {
-      res.status(400).json({ error: "name, credits, and priceUsd are required" });
+    if (!name || credits === undefined || priceCents === undefined) {
+      res.status(400).json({ error: "name, credits, and priceCents are required" });
       return;
     }
 
     const parsedCredits = Number(credits);
-    const parsedPrice = Number(priceUsd);
+    const parsedPrice = Number(priceCents);
     if (!Number.isFinite(parsedCredits) || parsedCredits < 1) {
       res.status(400).json({ error: "credits must be a positive integer" });
       return;
     }
-    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
-      res.status(400).json({ error: "priceUsd must be a positive number" });
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 1) {
+      res.status(400).json({ error: "priceCents must be a positive integer" });
       return;
     }
 
@@ -587,7 +590,7 @@ router.post("/admin/credit-packs", async (req: AuthRequest, res: Response) => {
       .values({
         name: String(name).trim(),
         credits: Math.floor(parsedCredits),
-        priceUsd: parsedPrice,
+        priceCents: Math.floor(parsedPrice),
         isActive: true,
       })
       .returning();
@@ -602,7 +605,7 @@ router.post("/admin/credit-packs", async (req: AuthRequest, res: Response) => {
 router.put("/admin/credit-packs/:id", async (req: AuthRequest, res: Response) => {
   try {
     const packId = Number(req.params.id);
-    const { name, credits, priceUsd, isActive } = req.body;
+    const { name, credits, priceCents, isActive } = req.body;
 
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = String(name).trim();
@@ -614,13 +617,13 @@ router.put("/admin/credit-packs/:id", async (req: AuthRequest, res: Response) =>
       }
       updates.credits = Math.floor(c);
     }
-    if (priceUsd !== undefined) {
-      const p = Number(priceUsd);
-      if (!Number.isFinite(p) || p <= 0) {
-        res.status(400).json({ error: "priceUsd must be a positive number" });
+    if (priceCents !== undefined) {
+      const p = Number(priceCents);
+      if (!Number.isFinite(p) || p < 1) {
+        res.status(400).json({ error: "priceCents must be a positive integer" });
         return;
       }
-      updates.priceUsd = p;
+      updates.priceCents = Math.floor(p);
     }
     if (isActive !== undefined) updates.isActive = Boolean(isActive);
 
@@ -681,9 +684,13 @@ router.get("/admin/purchases", async (req: AuthRequest, res: Response) => {
         transaction: creditTransactionsTable,
         userName: usersTable.name,
         userEmail: usersTable.email,
+        packName: creditPacksTable.name,
+        packCredits: creditPacksTable.credits,
+        packPriceCents: creditPacksTable.priceCents,
       })
       .from(creditTransactionsTable)
-      .leftJoin(usersTable, eq(creditTransactionsTable.userId, usersTable.id));
+      .leftJoin(usersTable, eq(creditTransactionsTable.userId, usersTable.id))
+      .leftJoin(creditPacksTable, eq(creditTransactionsTable.creditPackId, creditPacksTable.id));
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
     const results = whereClause
@@ -695,6 +702,9 @@ router.get("/admin/purchases", async (req: AuthRequest, res: Response) => {
         ...t.transaction,
         userName: t.userName,
         userEmail: t.userEmail,
+        packName: t.packName,
+        packCredits: t.packCredits,
+        packPriceCents: t.packPriceCents,
       }))
     );
   } catch (err: unknown) {

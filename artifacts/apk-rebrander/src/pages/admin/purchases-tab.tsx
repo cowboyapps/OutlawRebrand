@@ -16,9 +16,14 @@ interface Transaction {
   type: string;
   description: string | null;
   stripeSessionId: string | null;
+  creditPackId: number | null;
+  amountPaidCents: number | null;
   createdAt: string;
   userName: string | null;
   userEmail: string | null;
+  packName: string | null;
+  packCredits: number | null;
+  packPriceCents: number | null;
 }
 
 export default function PurchasesTab() {
@@ -106,7 +111,9 @@ export default function PurchasesTab() {
                 <TableHead>Date</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead>Amount</TableHead>
+                <TableHead>Credits</TableHead>
+                <TableHead>Pack Purchased</TableHead>
+                <TableHead>Amount Paid</TableHead>
                 <TableHead>Description</TableHead>
               </TableRow>
             </TableHeader>
@@ -127,6 +134,22 @@ export default function PurchasesTab() {
                   </TableCell>
                   <TableCell className={`font-medium ${t.amount > 0 ? "text-green-600" : "text-red-600"}`}>
                     {t.amount > 0 ? "+" : ""}{t.amount}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {t.packName ? (
+                      <span>{t.packName} ({t.packCredits} credits)</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm font-medium">
+                    {t.amountPaidCents != null ? (
+                      <span>${(t.amountPaidCents / 100).toFixed(2)}</span>
+                    ) : t.packPriceCents != null ? (
+                      <span>${(t.packPriceCents / 100).toFixed(2)}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
                     {t.description || "—"}

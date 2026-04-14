@@ -20,7 +20,7 @@ interface CreditPack {
   id: number;
   name: string;
   credits: number;
-  priceUsd: number;
+  priceCents: number;
   isActive: boolean;
   createdAt: string;
 }
@@ -41,7 +41,7 @@ export default function CreditPacksTab() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { name: string; credits: number; priceUsd: number }) => {
+    mutationFn: async (data: { name: string; credits: number; priceCents: number }) => {
       const res = await apiFetch("/admin/credit-packs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -126,7 +126,7 @@ export default function CreditPacksTab() {
                 <TableRow key={pack.id}>
                   <TableCell className="font-medium">{pack.name}</TableCell>
                   <TableCell>{pack.credits}</TableCell>
-                  <TableCell>${pack.priceUsd.toFixed(2)}</TableCell>
+                  <TableCell>${(pack.priceCents / 100).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={pack.isActive ? "default" : "outline"}>
                       {pack.isActive ? "Active" : "Inactive"}
@@ -183,20 +183,20 @@ function PackFormDialog({
 }: {
   pack?: CreditPack;
   onClose: () => void;
-  onSave: (data: { name: string; credits: number; priceUsd: number; isActive?: boolean }) => void;
+  onSave: (data: { name: string; credits: number; priceCents: number; isActive?: boolean }) => void;
   saving: boolean;
 }) {
   const [name, setName] = useState(pack?.name || "");
   const [credits, setCredits] = useState(String(pack?.credits || ""));
-  const [priceUsd, setPriceUsd] = useState(String(pack?.priceUsd || ""));
+  const [priceDollars, setPriceDollars] = useState(pack ? (pack.priceCents / 100).toFixed(2) : "");
   const [isActive, setIsActive] = useState(pack?.isActive ?? true);
 
   const handleSubmit = () => {
-    if (!name.trim() || !credits || !priceUsd) return;
+    if (!name.trim() || !credits || !priceDollars) return;
     onSave({
       name: name.trim(),
       credits: Number(credits),
-      priceUsd: Number(priceUsd),
+      priceCents: Math.round(Number(priceDollars) * 100),
       ...(pack ? { isActive } : {}),
     });
   };
@@ -218,7 +218,7 @@ function PackFormDialog({
           </div>
           <div className="space-y-2">
             <Label>Price (USD)</Label>
-            <Input type="number" min="0.01" step="0.01" value={priceUsd} onChange={(e) => setPriceUsd(e.target.value)} placeholder="9.99" />
+            <Input type="number" min="0.01" step="0.01" value={priceDollars} onChange={(e) => setPriceDollars(e.target.value)} placeholder="9.99" />
           </div>
           {pack && (
             <div className="flex items-center gap-2">
@@ -229,7 +229,7 @@ function PackFormDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={saving || !name.trim() || !credits || !priceUsd}>
+          <Button onClick={handleSubmit} disabled={saving || !name.trim() || !credits || !priceDollars}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {pack ? "Update" : "Create"}
           </Button>
