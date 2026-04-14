@@ -880,7 +880,7 @@ function BuildProgressSteps({ progress }: { progress?: string }) {
                   {step.label}
                 </p>
                 {isActive && progress && (
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{progress}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 break-words">{progress}</p>
                 )}
               </div>
             </div>
