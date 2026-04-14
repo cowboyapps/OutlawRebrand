@@ -12,6 +12,10 @@ tags:
     description: Health operations
   - name: apk
     description: APK rebranding operations
+  - name: stripe
+    description: Stripe payment operations
+  - name: customer
+    description: Customer operations
 paths:
   /healthz:
     get:
@@ -314,6 +318,102 @@ paths:
                 type: string
                 format: binary
 
+  /stripe/create-checkout-session:
+    post:
+      operationId: createCheckoutSession
+      tags: [stripe]
+      summary: Create a Stripe Checkout session for purchasing credits
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                creditPackId:
+                  type: integer
+              required:
+                - creditPackId
+      responses:
+        "200":
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+        "400":
+          description: Invalid pack or inactive
+        "401":
+          description: Not authenticated
+
+  /stripe/checkout-success:
+    get:
+      operationId: checkoutSuccess
+      tags: [stripe]
+      summary: Verify a Stripe Checkout session payment status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payment status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  status:
+                    type: string
+        "403":
+          description: Not authorized
+
+  /customer/credit-packs:
+    get:
+      operationId: getCustomerCreditPacks
+      tags: [customer]
+      summary: List available credit packs for purchase
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of active credit packs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditPack"
+
+  /customer/purchase-history:
+    get:
+      operationId: getCustomerPurchaseHistory
+      tags: [customer]
+      summary: Get current user's credit transaction history
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of credit transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditTransaction"
+
 components:
   schemas:
     HealthStatus:
@@ -552,3 +652,62 @@ components:
       required:
         - images
         - total
+
+    CreditPack:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        credits:
+          type: integer
+        priceCents:
+          type: integer
+        isActive:
+          type: boolean
+      required:
+        - id
+        - name
+        - credits
+        - priceCents
+        - isActive
+
+    CreditTransaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        amount:
+          type: integer
+        type:
+          type: string
+        description:
+          type: string
+          nullable: true
+        stripeSessionId:
+          type: string
+          nullable: true
+        creditPackId:
+          type: integer
+          nullable: true
+        amountPaidCents:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        packName:
+          type: string
+          nullable: true
+        packCredits:
+          type: integer
+          nullable: true
+        packPriceCents:
+          type: integer
+          nullable: true
+      required:
+        - id
+        - amount
+        - type
+        - createdAt
