@@ -806,18 +806,35 @@ function StepImages({ sessionId, onNext, onBack }: { sessionId: string, onNext: 
 }
 
 const BUILD_STEPS = [
-  { key: "clean", label: "Cleaning resources", patterns: ["Cleaning up resources", "Starting recompilation"] },
-  { key: "fix", label: "Fixing resource issues", patterns: ["Fixing resource issues", "Fixing numeric", "numeric resource"] },
-  { key: "recompile", label: "Recompiling APK", patterns: ["Recompiling APK", "Fixing", "resource error"] },
-  { key: "postbuild", label: "Finalizing APK", patterns: ["Cleaning up APK", "Restoring encrypted"] },
-  { key: "align", label: "Aligning APK", patterns: ["Aligning APK"] },
-  { key: "sign", label: "Signing APK", patterns: ["Signing APK", "Generating signing key"] },
+  { key: "clean", label: "Cleaning resources", heading: "Cleaning resources..." },
+  { key: "fix", label: "Fixing resource issues", heading: "Fixing resource issues..." },
+  { key: "recompile", label: "Recompiling APK", heading: "Recompiling APK..." },
+  { key: "cleanup", label: "Cleaning up APK", heading: "Cleaning up APK..." },
+  { key: "align", label: "Aligning APK", heading: "Aligning APK..." },
+  { key: "sign", label: "Signing APK", heading: "Signing APK..." },
+  { key: "done", label: "Done", heading: "APK ready!" },
+];
+
+const STEP_MATCHERS: [number, string][] = [
+  [6, "APK is ready"],
+  [5, "Signing APK"],
+  [5, "Generating signing key"],
+  [4, "Aligning APK"],
+  [3, "Cleaning up APK"],
+  [3, "Restoring encrypted"],
+  [2, "Recompiling APK"],
+  [2, "resource error"],
+  [1, "Fixing resource issues"],
+  [1, "Fixing numeric"],
+  [1, "numeric resource"],
+  [0, "Cleaning up resources"],
+  [0, "Starting recompilation"],
 ];
 
 function getActiveStepIndex(progress: string | undefined): number {
   if (!progress) return 0;
-  for (let i = BUILD_STEPS.length - 1; i >= 0; i--) {
-    if (BUILD_STEPS[i].patterns.some(p => progress.includes(p))) return i;
+  for (const [stepIdx, pattern] of STEP_MATCHERS) {
+    if (progress.includes(pattern)) return stepIdx;
   }
   return 0;
 }
@@ -830,12 +847,12 @@ function BuildProgressSteps({ progress }: { progress?: string }) {
       <div className="flex items-center gap-3 mb-6">
         <Loader2 className="h-8 w-8 text-primary animate-spin shrink-0" />
         <div>
-          <h3 className="text-lg font-medium">Building APK...</h3>
+          <h3 className="text-lg font-medium">{BUILD_STEPS[activeIndex].heading}</h3>
           <p className="text-xs text-muted-foreground">This may take a few minutes</p>
         </div>
       </div>
       <div className="space-y-1">
-        {BUILD_STEPS.map((step, i) => {
+        {BUILD_STEPS.filter(s => s.key !== "done").map((step, i) => {
           const isDone = i < activeIndex;
           const isActive = i === activeIndex;
           return (
