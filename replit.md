@@ -58,6 +58,17 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 - Credit packs: full CRUD
 - Purchases: transaction history with user info
 
+## Customer Rebranding Flow
+
+- Customer API routes at `/api/customer/*` — protected by `requireAuth` middleware
+- **Browse apps**: GET `/api/customer/apps` returns active apps with images and icon thumbnails
+- **Start rebrand**: POST `/api/customer/rebrand/start` copies base decompiled APK to a new session
+- **Customize**: PUT panel-url, PUT app-name, POST image upload — all modify the session's decompiled directory
+- **Build**: POST build triggers recompile → align → sign pipeline (shared with admin via `apk-helpers.ts`)
+- **Credit gating**: Atomic credit deduction via SQL transaction after successful build; download blocked (402) until credits deducted
+- **Downloads**: GET `/api/customer/builds/:jobId/download` serves signed APK
+- In-memory session tracking via `rebrandSessions` Map (keyed by job ID)
+
 ## APK Processing
 
 - Sessions stored in-memory (Map), work files in `/tmp/apk-rebrander/`
@@ -94,7 +105,12 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 - `artifacts/apk-rebrander/src/pages/admin/customers-tab.tsx` — customer list and build history
 - `artifacts/apk-rebrander/src/pages/admin/credit-packs-tab.tsx` — credit pack CRUD
 - `artifacts/apk-rebrander/src/pages/admin/purchases-tab.tsx` — transaction history
-- `artifacts/apk-rebrander/src/pages/dashboard/index.tsx` — customer dashboard placeholder
+- `artifacts/api-server/src/routes/customer.ts` — customer rebrand API (apps, rebrand wizard, builds, downloads)
+- `artifacts/api-server/src/routes/apk-helpers.ts` — shared APK build pipeline functions (used by both admin and customer flows)
+- `artifacts/apk-rebrander/src/pages/dashboard/index.tsx` — customer dashboard (app browser, rebrand wizard, builds)
+- `artifacts/apk-rebrander/src/pages/dashboard/app-browser.tsx` — browse available apps grid
+- `artifacts/apk-rebrander/src/pages/dashboard/rebrand-wizard.tsx` — guided rebrand flow (panel URL, app name, images, build)
+- `artifacts/apk-rebrander/src/pages/dashboard/my-builds.tsx` — build history with download links
 - `lib/db/src/schema/` — Drizzle ORM schema definitions
 - `lib/api-spec/openapi.yaml` — API contract
 - `tools/` — Java APK tools (SignApk, ZipAlign, apksigner.jar)
