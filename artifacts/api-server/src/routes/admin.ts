@@ -947,9 +947,13 @@ async function scanImages(decompDir: string): Promise<ScannedImage[]> {
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
           if (imageExts.includes(ext)) {
+            if (entry.name.startsWith("APKTOOL_DUPLICATE")) continue;
+
             const relativePath = path.relative(decompDir, fullPath);
             if (relativePath.startsWith("res/") || relativePath.startsWith("assets/")) {
               const stat = await fs.stat(fullPath);
+              if (stat.size < 100) continue;
+
               let width: number | undefined;
               let height: number | undefined;
               let thumbnail: string | undefined;
@@ -957,6 +961,7 @@ async function scanImages(decompDir: string): Promise<ScannedImage[]> {
                 const metadata = await sharp(fullPath).metadata();
                 width = metadata.width;
                 height = metadata.height;
+                if (width && height && width < 16 && height < 16) continue;
                 const buf = await sharp(fullPath)
                   .resize(96, 96, { fit: "inside", withoutEnlargement: false })
                   .png()
