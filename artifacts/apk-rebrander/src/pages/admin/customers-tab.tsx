@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Users, ArrowLeft, Download } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2, Users, ArrowLeft, Download, KeyRound } from "lucide-react";
 
 const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-function apiFetch(path: string) {
-  return fetch(`${baseUrl}/api${path}`, { credentials: "include" });
+function apiFetch(path: string, opts?: RequestInit) {
+  return fetch(`${baseUrl}/api${path}`, { credentials: "include", ...opts });
 }
 
 interface Customer {
@@ -110,6 +110,22 @@ export default function CustomersTab() {
 }
 
 function CustomerDetail({ customer, onBack }: { customer: Customer; onBack: () => void }) {
+  const { toast } = useToast();
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/admin/customers/${customer.id}/reset-password`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to reset");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Password Reset", description: data.message });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to initiate password reset", variant: "destructive" });
+    },
+  });
+
   const { data: builds = [], isLoading } = useQuery<Build[]>({
     queryKey: ["admin", "customers", customer.id, "builds"],
     queryFn: async () => {
@@ -149,6 +165,17 @@ function CustomerDetail({ customer, onBack }: { customer: Customer; onBack: () =
             <div>
               <p className="text-sm text-muted-foreground">Joined</p>
               <p className="font-medium">{new Date(customer.createdAt).toLocaleDateString()}</p>
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => resetPasswordMutation.mutate()}
+                disabled={resetPasswordMutation.isPending}
+              >
+                <KeyRound className="h-4 w-4 mr-1" />
+                Reset Password
+              </Button>
             </div>
           </div>
         </CardContent>

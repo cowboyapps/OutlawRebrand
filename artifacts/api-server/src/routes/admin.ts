@@ -454,6 +454,36 @@ router.get("/admin/customers/:id", async (req: AuthRequest, res: Response) => {
   }
 });
 
+router.post("/admin/customers/:id/reset-password", async (req: AuthRequest, res: Response) => {
+  try {
+    const custId = Number(req.params.id);
+    const [customer] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.id, custId), eq(usersTable.isAdmin, false)))
+      .limit(1);
+
+    if (!customer) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    if (!customer.clerkId) {
+      res.status(400).json({ error: "Customer has no linked auth account" });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: "Password reset is managed through the authentication provider. The customer can use the 'Forgot Password' flow on the sign-in page.",
+      email: customer.email,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to process reset";
+    res.status(500).json({ error: message });
+  }
+});
+
 router.get("/admin/customers/:id/builds", async (req: AuthRequest, res: Response) => {
   try {
     const custId = Number(req.params.id);
@@ -481,11 +511,12 @@ router.get("/admin/customers/:id/builds", async (req: AuthRequest, res: Response
 
 router.get("/admin/customers/:custId/builds/:buildId/download", async (req: AuthRequest, res: Response) => {
   try {
+    const custId = Number(req.params.custId);
     const buildId = Number(req.params.buildId);
     const [build] = await db
       .select()
       .from(customerBuildsTable)
-      .where(eq(customerBuildsTable.id, buildId))
+      .where(and(eq(customerBuildsTable.id, buildId), eq(customerBuildsTable.userId, custId)))
       .limit(1);
 
     if (!build) {
@@ -633,18 +664,34 @@ router.delete("/admin/credit-packs/:id", async (req: AuthRequest, res: Response)
 
 router.get("/admin/purchases", async (req: AuthRequest, res: Response) => {
   try {
-    const transactions = await db
+    const conditions = [];
+
+    const userId = req.query.userId ? Number(req.query.userId) : null;
+    if (userId && Number.isFinite(userId)) {
+      conditions.push(eq(creditTransactionsTable.userId, userId));
+    }
+
+    const type = req.query.type ? String(req.query.type) : null;
+    if (type) {
+      conditions.push(eq(creditTransactionsTable.type, type));
+    }
+
+    const query = db
       .select({
         transaction: creditTransactionsTable,
         userName: usersTable.name,
         userEmail: usersTable.email,
       })
       .from(creditTransactionsTable)
-      .leftJoin(usersTable, eq(creditTransactionsTable.userId, usersTable.id))
-      .orderBy(desc(creditTransactionsTable.createdAt));
+      .leftJoin(usersTable, eq(creditTransactionsTable.userId, usersTable.id));
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const results = whereClause
+      ? await query.where(whereClause).orderBy(desc(creditTransactionsTable.createdAt))
+      : await query.orderBy(desc(creditTransactionsTable.createdAt));
 
     res.json(
-      transactions.map((t) => ({
+      results.map((t) => ({
         ...t.transaction,
         userName: t.userName,
         userEmail: t.userEmail,
