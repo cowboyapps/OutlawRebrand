@@ -1,0 +1,177 @@
+.class public Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;
+.super Lorg/spongycastle/asn1/ASN1Object;
+.source "ExtendedFailInfo.java"
+
+
+# instance fields
+.field private final failInfoOID:Lorg/spongycastle/asn1/ASN1ObjectIdentifier;
+
+.field private final failInfoValue:Lorg/spongycastle/asn1/ASN1Encodable;
+
+
+# direct methods
+.method public constructor <init>(Lorg/spongycastle/asn1/ASN1ObjectIdentifier;Lorg/spongycastle/asn1/ASN1Encodable;)V
+    .locals 0
+
+    invoke-direct {p0}, Lorg/spongycastle/asn1/ASN1Object;-><init>()V
+
+    iput-object p1, p0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;->failInfoOID:Lorg/spongycastle/asn1/ASN1ObjectIdentifier;
+
+    iput-object p2, p0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;->failInfoValue:Lorg/spongycastle/asn1/ASN1Encodable;
+
+    return-void
+.end method
+
+.method private constructor <init>(Lorg/spongycastle/asn1/ASN1Sequence;)V
+    .locals 2
+
+    invoke-direct {p0}, Lorg/spongycastle/asn1/ASN1Object;-><init>()V
+
+    invoke-virtual {p1}, Lorg/spongycastle/asn1/ASN1Sequence;->size()I
+
+    move-result v0
+
+    const/4 v1, 0x2
+
+    if-ne v0, v1, :cond_0
+
+    const/4 v0, 0x0
+
+    invoke-virtual {p1, v0}, Lorg/spongycastle/asn1/ASN1Sequence;->getObjectAt(I)Lorg/spongycastle/asn1/ASN1Encodable;
+
+    move-result-object v0
+
+    invoke-static {v0}, Lorg/spongycastle/asn1/ASN1ObjectIdentifier;->getInstance(Ljava/lang/Object;)Lorg/spongycastle/asn1/ASN1ObjectIdentifier;
+
+    move-result-object v0
+
+    iput-object v0, p0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;->failInfoOID:Lorg/spongycastle/asn1/ASN1ObjectIdentifier;
+
+    const/4 v0, 0x1
+
+    invoke-virtual {p1, v0}, Lorg/spongycastle/asn1/ASN1Sequence;->getObjectAt(I)Lorg/spongycastle/asn1/ASN1Encodable;
+
+    move-result-object v0
+
+    iput-object v0, p0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;->failInfoValue:Lorg/spongycastle/asn1/ASN1Encodable;
+
+    return-void
+
+    :cond_0
+    new-instance v0, Ljava/lang/IllegalArgumentException;
+
+    const-string v1, "Sequence must be 2 elements."
+
+    invoke-direct {v0, v1}, Ljava/lang/IllegalArgumentException;-><init>(Ljava/lang/String;)V
+
+    throw v0
+.end method
+
+.method public static getInstance(Ljava/lang/Object;)Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;
+    .locals 3
+
+    instance-of v0, p0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;
+
+    if-eqz v0, :cond_0
+
+    move-object v0, p0
+
+    check-cast v0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;
+
+    return-object v0
+
+    :cond_0
+    instance-of v0, p0, Lorg/spongycastle/asn1/ASN1Encodable;
+
+    if-eqz v0, :cond_2
+
+    move-object v0, p0
+
+    check-cast v0, Lorg/spongycastle/asn1/ASN1Encodable;
+
+    invoke-interface {v0}, Lorg/spongycastle/asn1/ASN1Encodable;->toASN1Primitive()Lorg/spongycastle/asn1/ASN1Primitive;
+
+    move-result-object v0
+
+    instance-of v1, v0, Lorg/spongycastle/asn1/ASN1Sequence;
+
+    if-eqz v1, :cond_1
+
+    new-instance v1, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;
+
+    move-object v2, v0
+
+    check-cast v2, Lorg/spongycastle/asn1/ASN1Sequence;
+
+    invoke-direct {v1, v2}, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;-><init>(Lorg/spongycastle/asn1/ASN1Sequence;)V
+
+    return-object v1
+
+    :cond_1
+    goto :goto_0
+
+    :cond_2
+    instance-of v0, p0, [B
+
+    if-eqz v0, :cond_3
+
+    invoke-static {p0}, Lorg/spongycastle/asn1/ASN1Sequence;->getInstance(Ljava/lang/Object;)Lorg/spongycastle/asn1/ASN1Sequence;
+
+    move-result-object v0
+
+    invoke-static {v0}, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;->getInstance(Ljava/lang/Object;)Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;
+
+    move-result-object v0
+
+    return-object v0
+
+    :cond_3
+    :goto_0
+    const/4 v0, 0x0
+
+    return-object v0
+.end method
+
+
+# virtual methods
+.method public getFailInfoOID()Lorg/spongycastle/asn1/ASN1ObjectIdentifier;
+    .locals 1
+
+    iget-object v0, p0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;->failInfoOID:Lorg/spongycastle/asn1/ASN1ObjectIdentifier;
+
+    return-object v0
+.end method
+
+.method public getFailInfoValue()Lorg/spongycastle/asn1/ASN1Encodable;
+    .locals 1
+
+    iget-object v0, p0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;->failInfoValue:Lorg/spongycastle/asn1/ASN1Encodable;
+
+    return-object v0
+.end method
+
+.method public toASN1Primitive()Lorg/spongycastle/asn1/ASN1Primitive;
+    .locals 4
+
+    new-instance v0, Lorg/spongycastle/asn1/DERSequence;
+
+    const/4 v1, 0x2
+
+    new-array v1, v1, [Lorg/spongycastle/asn1/ASN1Encodable;
+
+    const/4 v2, 0x0
+
+    iget-object v3, p0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;->failInfoOID:Lorg/spongycastle/asn1/ASN1ObjectIdentifier;
+
+    aput-object v3, v1, v2
+
+    const/4 v2, 0x1
+
+    iget-object v3, p0, Lorg/spongycastle/asn1/cmc/ExtendedFailInfo;->failInfoValue:Lorg/spongycastle/asn1/ASN1Encodable;
+
+    aput-object v3, v1, v2
+
+    invoke-direct {v0, v1}, Lorg/spongycastle/asn1/DERSequence;-><init>([Lorg/spongycastle/asn1/ASN1Encodable;)V
+
+    return-object v0
+.end method

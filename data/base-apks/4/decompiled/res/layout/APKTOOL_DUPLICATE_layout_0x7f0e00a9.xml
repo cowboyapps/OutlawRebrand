@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b008a" android:layout_width="@dimen/APKTOOL_DUPLICATE_dimen_0x7f0700ed" android:layout_height="fill_parent" android:paddingEnd="@dimen/APKTOOL_DUPLICATE_dimen_0x7f0700e8" android:transitionGroup="true" android:elevation="@dimen/APKTOOL_DUPLICATE_dimen_0x7f0700ee"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <androidx.leanback.widget.VerticalGridView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0088" android:layout_width="@dimen/APKTOOL_DUPLICATE_dimen_0x7f0700ed" android:layout_height="fill_parent" style="?APKTOOL_DUPLICATE_attr_0x7f0402d1" />
+    <View android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b018e" android:background="@drawable/APKTOOL_DUPLICATE_drawable_0x7f08017f" android:layout_width="@dimen/APKTOOL_DUPLICATE_dimen_0x7f0700e6" android:layout_height="fill_parent" android:layout_alignParentEnd="true" />
+</RelativeLayout>

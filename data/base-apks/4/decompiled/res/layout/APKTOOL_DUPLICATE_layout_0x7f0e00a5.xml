@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01c6" android:layout_width="0.0dip" android:layout_height="fill_parent" android:layout_weight="?APKTOOL_DUPLICATE_attr_0x7f0402be" android:transitionName="guidedactions_root2" android:transitionGroup="false"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <androidx.leanback.widget.NonOverlappingView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01c4" android:background="?APKTOOL_DUPLICATE_attr_0x7f0402b3" android:layout_width="fill_parent" android:layout_height="fill_parent" android:transitionName="guidedactions_list_background2" />
+    <androidx.leanback.widget.NonOverlappingFrameLayout android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01ba" android:layout_width="fill_parent" android:layout_height="fill_parent" android:transitionName="guidedactions_content2" android:transitionGroup="false">
+        <androidx.leanback.widget.VerticalGridView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01c2" android:transitionGroup="true" style="?APKTOOL_DUPLICATE_attr_0x7f0402bd" />
+    </androidx.leanback.widget.NonOverlappingFrameLayout>
+</RelativeLayout>

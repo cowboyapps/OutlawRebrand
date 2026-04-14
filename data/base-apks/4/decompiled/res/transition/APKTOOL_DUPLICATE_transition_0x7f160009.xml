@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<transition android:interpolator="@android:interpolator/fast_out_linear_in" android:duration="@integer/APKTOOL_DUPLICATE_integer_0x7f0c0020" app:APKTOOL_DUPLICATE_attr_0x7f040393="APKTOOL_DUPLICATE_id_0x7f0b007d" class="androidx.leanback.transition.FadeAndShortSlide"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" />

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="APKTOOL_DUPLICATE_style_0x7f14004d" parent="@style/APKTOOL_DUPLICATE_style_0x7f1400b7" />
+    <style name="APKTOOL_DUPLICATE_style_0x7f140054" parent="@style/APKTOOL_DUPLICATE_style_0x7f1400b8" />
+    <style name="APKTOOL_DUPLICATE_style_0x7f1400fc" parent="@style/APKTOOL_DUPLICATE_style_0x7f1400b9" />
+    <style name="APKTOOL_DUPLICATE_style_0x7f140310" parent="@style/APKTOOL_DUPLICATE_style_0x7f14030e">
+        <item name="android:defaultFocusHighlightEnabled">false</item>
+    </style>
+    <style name="APKTOOL_DUPLICATE_style_0x7f1403f8" parent="@android:style/Widget">
+        <item name="android:background">?APKTOOL_DUPLICATE_attr_0x7f04015a</item>
+        <item name="android:stateListAnimator">@animator/2</item>
+        <item name="android:touchscreenBlocksFocus">true</item>
+        <item name="android:keyboardNavigationCluster">true</item>
+    </style>
+    <style name="APKTOOL_DUPLICATE_style_0x7f1400b7" parent="@style/APKTOOL_DUPLICATE_style_0x7f1400b1">
+        <item name="APKTOOL_DUPLICATE_attr_0x7f040135">?android:colorError</item>
+    </style>
+    <style name="APKTOOL_DUPLICATE_style_0x7f1400b8" parent="@style/APKTOOL_DUPLICATE_style_0x7f1400b2">
+        <item name="APKTOOL_DUPLICATE_attr_0x7f040135">?android:colorError</item>
+    </style>
+    <style name="APKTOOL_DUPLICATE_style_0x7f1400b9" parent="@style/APKTOOL_DUPLICATE_style_0x7f1400c3">
+        <item name="android:touchscreenBlocksFocus">true</item>
+        <item name="android:keyboardNavigationCluster">true</item>
+    </style>
+</resources>

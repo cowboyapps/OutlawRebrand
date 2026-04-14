@@ -1,0 +1,78 @@
+.class public final synthetic Lcom/parse/ˑʽ;
+.super Ljava/lang/Object;
+.source "SourceFile"
+
+# interfaces
+.implements Lcom/parse/boltsinternal/Continuation;
+
+
+# instance fields
+.field public final synthetic ʽᐧ:Lcom/parse/CachedCurrentInstallationController;
+
+.field public final synthetic ˑʽ:Lcom/parse/ParseInstallation;
+
+.field public final synthetic ـﹶ:I
+
+
+# direct methods
+.method public synthetic constructor <init>(Lcom/parse/CachedCurrentInstallationController;Lcom/parse/ParseInstallation;I)V
+    .locals 0
+
+    iput p3, p0, Lcom/parse/ˑʽ;->ـﹶ:I
+
+    iput-object p1, p0, Lcom/parse/ˑʽ;->ʽᐧ:Lcom/parse/CachedCurrentInstallationController;
+
+    iput-object p2, p0, Lcom/parse/ˑʽ;->ˑʽ:Lcom/parse/ParseInstallation;
+
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    return-void
+.end method
+
+
+# virtual methods
+.method public final then(Lcom/parse/boltsinternal/Task;)Ljava/lang/Object;
+    .locals 2
+
+    iget v0, p0, Lcom/parse/ˑʽ;->ـﹶ:I
+
+    packed-switch v0, :pswitch_data_0
+
+    iget-object v0, p0, Lcom/parse/ˑʽ;->ʽᐧ:Lcom/parse/CachedCurrentInstallationController;
+
+    iget-object v1, p0, Lcom/parse/ˑʽ;->ˑʽ:Lcom/parse/ParseInstallation;
+
+    invoke-static {v0, v1, p1}, Lcom/parse/CachedCurrentInstallationController;->ˑʽ(Lcom/parse/CachedCurrentInstallationController;Lcom/parse/ParseInstallation;Lcom/parse/boltsinternal/Task;)Lcom/parse/boltsinternal/Task;
+
+    move-result-object p1
+
+    return-object p1
+
+    :pswitch_0
+    iget-object v0, p0, Lcom/parse/ˑʽ;->ʽᐧ:Lcom/parse/CachedCurrentInstallationController;
+
+    iget-object v1, p0, Lcom/parse/ˑʽ;->ˑʽ:Lcom/parse/ParseInstallation;
+
+    invoke-static {v0, v1, p1}, Lcom/parse/CachedCurrentInstallationController;->ـﹶ(Lcom/parse/CachedCurrentInstallationController;Lcom/parse/ParseInstallation;Lcom/parse/boltsinternal/Task;)Lcom/parse/boltsinternal/Task;
+
+    move-result-object p1
+
+    return-object p1
+
+    :pswitch_1
+    iget-object v0, p0, Lcom/parse/ˑʽ;->ʽᐧ:Lcom/parse/CachedCurrentInstallationController;
+
+    iget-object v1, p0, Lcom/parse/ˑʽ;->ˑʽ:Lcom/parse/ParseInstallation;
+
+    invoke-static {v0, v1, p1}, Lcom/parse/CachedCurrentInstallationController;->ʽᐧ(Lcom/parse/CachedCurrentInstallationController;Lcom/parse/ParseInstallation;Lcom/parse/boltsinternal/Task;)Lcom/parse/boltsinternal/Task;
+
+    move-result-object p1
+
+    return-object p1
+
+    :pswitch_data_0
+    .packed-switch 0x0
+        :pswitch_1
+        :pswitch_0
+    .end packed-switch
+.end method

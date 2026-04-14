@@ -329,7 +329,7 @@ router.post("/admin/apps/:id/images", async (req: AuthRequest, res: Response) =>
 router.put("/admin/apps/:id", async (req: AuthRequest, res: Response) => {
   try {
     const appId = Number(req.params.id);
-    const { name, creditCost, description, isActive } = req.body;
+    const { name, creditCost, description, versionName, isActive } = req.body;
 
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = String(name).trim();
@@ -342,6 +342,7 @@ router.put("/admin/apps/:id", async (req: AuthRequest, res: Response) => {
       updates.creditCost = Math.floor(c);
     }
     if (description !== undefined) updates.description = description;
+    if (versionName !== undefined) updates.versionName = String(versionName).trim() || null;
     if (isActive !== undefined) updates.isActive = Boolean(isActive);
 
     if (Object.keys(updates).length === 0) {

@@ -20,6 +20,7 @@ interface AppData {
   id: number;
   name: string;
   slug: string;
+  description: string | null;
   packageName: string | null;
   versionName: string | null;
   creditCost: number;
@@ -274,6 +275,8 @@ function EditAppDialog({
   saving: boolean;
 }) {
   const [name, setName] = useState(app.name);
+  const [versionName, setVersionName] = useState(app.versionName || "");
+  const [description, setDescription] = useState(app.description || "");
   const [creditCost, setCreditCost] = useState(String(app.creditCost));
   const [isActive, setIsActive] = useState(app.isActive);
 
@@ -289,6 +292,20 @@ function EditAppDialog({
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-2">
+            <Label>Version</Label>
+            <Input value={versionName} onChange={(e) => setVersionName(e.target.value)} placeholder="e.g. 5.1.0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <p className="text-xs text-muted-foreground">Visible to customers when browsing apps.</p>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Brief description of this app for customers..."
+              className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <div className="space-y-2">
             <Label>Credit Cost</Label>
             <Input type="number" min="1" value={creditCost} onChange={(e) => setCreditCost(e.target.value)} />
           </div>
@@ -299,7 +316,7 @@ function EditAppDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => onSave({ name, creditCost: Number(creditCost), isActive })} disabled={saving}>
+          <Button onClick={() => onSave({ name, versionName, description, creditCost: Number(creditCost), isActive })} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Save
           </Button>

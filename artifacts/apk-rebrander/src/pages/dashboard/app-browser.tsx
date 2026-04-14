@@ -55,7 +55,12 @@ export default function AppBrowser({
                   </div>
                 )}
                 <div className="min-w-0">
-                  <h3 className="font-semibold text-lg">{app.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-lg">{app.name}</h3>
+                    {app.versionName && (
+                      <span className="text-xs text-muted-foreground">v{app.versionName}</span>
+                    )}
+                  </div>
                   {app.description && (
                     <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{app.description}</p>
                   )}

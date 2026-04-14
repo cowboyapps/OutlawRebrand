@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b033f" android:focusable="false" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="@dimen/APKTOOL_DUPLICATE_dimen_0x7f070464" android:paddingEnd="@dimen/APKTOOL_DUPLICATE_dimen_0x7f070464"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

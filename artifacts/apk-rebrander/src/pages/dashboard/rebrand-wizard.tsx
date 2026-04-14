@@ -634,7 +634,9 @@ function ImageUploadCard({
     <div className="border rounded-lg p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">{image.label}</span>
-        <span className="text-xs text-muted-foreground">{image.width}x{image.height}</span>
+        <Badge variant="outline" className="text-xs shrink-0">
+          Required: {image.width} x {image.height}px
+        </Badge>
       </div>
       {image.thumbnail ? (
         <img

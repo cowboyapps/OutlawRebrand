@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <androidx.leanback.widget.GuidanceStylingRelativeLayout android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01b4" style="?APKTOOL_DUPLICATE_attr_0x7f040298">
+        <ImageView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01b6" style="?APKTOOL_DUPLICATE_attr_0x7f04029b" />
+        <TextView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01b3" style="?APKTOOL_DUPLICATE_attr_0x7f040297" />
+        <TextView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01b7" style="?APKTOOL_DUPLICATE_attr_0x7f04029c" />
+        <TextView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01b5" style="?APKTOOL_DUPLICATE_attr_0x7f040299" />
+    </androidx.leanback.widget.GuidanceStylingRelativeLayout>
+</FrameLayout>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout style="?APKTOOL_DUPLICATE_attr_0x7f04048c"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:lb="http://schemas.android.com/apk/res-auto">
+    <TextView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0282" style="?APKTOOL_DUPLICATE_attr_0x7f04048d" />
+</FrameLayout>

@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<objectAnimator android:duration="@android:integer/config_shortAnimTime" android:valueFrom="@dimen/APKTOOL_DUPLICATE_dimen_0x7f07015a" android:valueTo="0.0" android:valueType="floatType" android:propertyName="translationY"
+  xmlns:android="http://schemas.android.com/apk/res/android" />

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.leanback.widget.PlaybackControlsRowView android:orientation="vertical" android:clipChildren="false" android:clipToPadding="false" android:layout_width="fill_parent" android:layout_height="wrap_content" android:paddingStart="?APKTOOL_DUPLICATE_attr_0x7f04048f" android:paddingEnd="?APKTOOL_DUPLICATE_attr_0x7f04048e"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b00fe" android:clipChildren="false" android:clipToPadding="false" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="@dimen/APKTOOL_DUPLICATE_dimen_0x7f070172">
+        <ImageView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01f1" android:layout_width="wrap_content" android:layout_height="@dimen/APKTOOL_DUPLICATE_dimen_0x7f07016e" android:scaleType="fitStart" android:adjustViewBounds="true" />
+        <LinearLayout android:layout_gravity="bottom" android:orientation="vertical" android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b00ff" android:clipChildren="false" android:clipToPadding="false" android:layout_width="fill_parent" android:layout_height="wrap_content">
+            <FrameLayout android:gravity="top" android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0118" android:paddingTop="@dimen/APKTOOL_DUPLICATE_dimen_0x7f07017b" android:clipChildren="false" android:clipToPadding="false" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="@dimen/APKTOOL_DUPLICATE_dimen_0x7f07017a" android:layout_marginEnd="@dimen/APKTOOL_DUPLICATE_dimen_0x7f070179" />
+            <Space android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0357" android:layout_width="fill_parent" android:layout_height="16.0dip" />
+            <FrameLayout android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0101" android:layout_width="fill_parent" android:layout_height="wrap_content" android:minHeight="@dimen/APKTOOL_DUPLICATE_dimen_0x7f070102" android:layout_marginStart="@dimen/APKTOOL_DUPLICATE_dimen_0x7f07017a" android:layout_marginEnd="@dimen/APKTOOL_DUPLICATE_dimen_0x7f070179" />
+        </LinearLayout>
+    </LinearLayout>
+    <FrameLayout android:layout_gravity="center_horizontal" android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0337" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    <Space android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b007e" android:layout_width="fill_parent" android:layout_height="@dimen/APKTOOL_DUPLICATE_dimen_0x7f070172" />
+</androidx.leanback.widget.PlaybackControlsRowView>

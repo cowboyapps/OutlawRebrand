@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.leanback.widget.GuidedActionItemContainer style="?APKTOOL_DUPLICATE_attr_0x7f0402a7"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <androidx.leanback.widget.CheckableImageView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01bb" style="?APKTOOL_DUPLICATE_attr_0x7f0402a5" />
+    <ImageView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01bf" style="?APKTOOL_DUPLICATE_attr_0x7f0402aa" />
+    <androidx.leanback.widget.NonOverlappingLinearLayout android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01bd" style="?APKTOOL_DUPLICATE_attr_0x7f0402a8">
+        <androidx.leanback.widget.GuidedActionEditText android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01c0" style="?APKTOOL_DUPLICATE_attr_0x7f0402ab" />
+        <androidx.leanback.widget.GuidedActionEditText android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01be" style="?APKTOOL_DUPLICATE_attr_0x7f0402a9" />
+    </androidx.leanback.widget.NonOverlappingLinearLayout>
+    <ImageView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b01bc" style="?APKTOOL_DUPLICATE_attr_0x7f0402a6" />
+</androidx.leanback.widget.GuidedActionItemContainer>

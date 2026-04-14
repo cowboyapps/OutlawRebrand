@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0275" android:layout_width="wrap_content" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <androidx.constraintlayout.helper.widget.Flow android:orientation="vertical" android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0267" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_marginTop="20.0dip" app:APKTOOL_DUPLICATE_attr_0x7f040180="material_clock_display,material_clock_period_toggle" app:APKTOOL_DUPLICATE_attr_0x7f04026e="@dimen/APKTOOL_DUPLICATE_dimen_0x7f07036e" app:APKTOOL_DUPLICATE_attr_0x7f040357="APKTOOL_DUPLICATE_id_0x7f0b02db" app:APKTOOL_DUPLICATE_attr_0x7f040371="APKTOOL_DUPLICATE_id_0x7f0b02db" app:APKTOOL_DUPLICATE_attr_0x7f040375="APKTOOL_DUPLICATE_id_0x7f0b02db" />
+    <include android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0266" android:layout_width="wrap_content" android:layout_height="wrap_content" layout="@layout/material_clock_display" />
+    <include android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b026d" android:layout_width="0.0dip" android:layout_height="wrap_content" layout="@layout/APKTOOL_DUPLICATE_layout_0x7f0e00e4" />
+    <com.google.android.material.timepicker.ClockFaceView android:id="@id/APKTOOL_DUPLICATE_id_0x7f0b0268" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="@dimen/APKTOOL_DUPLICATE_dimen_0x7f070059" app:APKTOOL_DUPLICATE_attr_0x7f040370="@id/APKTOOL_DUPLICATE_id_0x7f0b0267" app:APKTOOL_DUPLICATE_attr_0x7f040375="APKTOOL_DUPLICATE_id_0x7f0b02db" />
+</merge>
