@@ -25,12 +25,22 @@ async function syncUser(clerkId: string, email: string, name: string) {
     .limit(1);
 
   if (existing.length > 0) {
+    const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+    const shouldBeAdmin = email && adminEmails.includes(email.toLowerCase());
+    const updates: Record<string, unknown> = {};
     if (email && (!existing[0].email || existing[0].email !== email)) {
+      updates.email = email;
+    }
+    if (shouldBeAdmin && !existing[0].isAdmin) {
+      updates.isAdmin = true;
+    }
+    if (Object.keys(updates).length > 0) {
       await db
         .update(usersTable)
-        .set({ email })
+        .set(updates)
         .where(eq(usersTable.clerkId, clerkId));
-      existing[0].email = email;
+      if (updates.email) existing[0].email = email;
+      if (updates.isAdmin) existing[0].isAdmin = true;
     }
     return existing[0];
   }
