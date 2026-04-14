@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { UserButton } from "@clerk/react";
+import { useLocation, useSearch } from "wouter";
 import AppBrowser from "./app-browser";
 import RebrandWizard from "./rebrand-wizard";
 import MyBuilds from "./my-builds";
+import BuyCredits from "./buy-credits";
 
 const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -33,13 +35,28 @@ export interface AppImage {
   height: number;
 }
 
-type DashboardView = "browse" | "rebrand" | "builds";
+type DashboardView = "browse" | "rebrand" | "builds" | "buy-credits";
 
 export default function CustomerDashboard() {
   const { data: user, refetch: refetchUser } = useCurrentUser();
-  const [view, setView] = useState<DashboardView>("browse");
+  const searchStr = useSearch();
+  const [, setLocation] = useLocation();
+  const params = new URLSearchParams(searchStr);
+  const paymentParam = params.get("payment");
+
+  const [view, setView] = useState<DashboardView>(paymentParam ? "buy-credits" : "browse");
   const [selectedApp, setSelectedApp] = useState<AvailableApp | null>(null);
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(paymentParam);
+
+  useEffect(() => {
+    if (paymentParam) {
+      setPaymentStatus(paymentParam);
+      setView("buy-credits");
+      refetchUser();
+      setLocation("/dashboard", { replace: true });
+    }
+  }, [paymentParam]);
 
   const { data: apps = [], isLoading: appsLoading } = useQuery<AvailableApp[]>({
     queryKey: ["customer", "apps"],
@@ -64,6 +81,7 @@ export default function CustomerDashboard() {
   const handleBackToBrowse = () => {
     setSelectedApp(null);
     setActiveJobId(null);
+    setPaymentStatus(null);
     setView("browse");
   };
 
@@ -72,7 +90,7 @@ export default function CustomerDashboard() {
       <div className="border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold">APK Rebrander</h1>
+            <h1 className="text-xl font-bold">OutlawRebrand</h1>
             <nav className="flex gap-2">
               <button
                 onClick={() => { handleBackToBrowse(); }}
@@ -90,12 +108,23 @@ export default function CustomerDashboard() {
               >
                 My Builds
               </button>
+              <button
+                onClick={() => { setPaymentStatus(null); setView("buy-credits"); }}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  view === "buy-credits" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Buy Credits
+              </button>
             </nav>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm font-medium px-3 py-1 bg-muted rounded-full">
+            <button
+              onClick={() => { setPaymentStatus(null); setView("buy-credits"); }}
+              className="text-sm font-medium px-3 py-1 bg-muted rounded-full hover:bg-muted/80 transition-colors cursor-pointer"
+            >
               {user?.credits ?? 0} credits
-            </span>
+            </button>
             <UserButton />
           </div>
         </div>
@@ -119,6 +148,12 @@ export default function CustomerDashboard() {
         )}
         {view === "builds" && (
           <MyBuilds highlightJobId={activeJobId} />
+        )}
+        {view === "buy-credits" && (
+          <BuyCredits
+            userCredits={user?.credits ?? 0}
+            paymentStatus={paymentStatus}
+          />
         )}
       </div>
     </div>

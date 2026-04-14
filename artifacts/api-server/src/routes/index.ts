@@ -4,6 +4,7 @@ import apkRouter from "./apk";
 import authRouter from "./auth";
 import adminRouter from "./admin";
 import customerRouter from "./customer";
+import stripeRouter from "./stripe";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(apkRouter);
 router.use(authRouter);
 router.use(adminRouter);
 router.use(customerRouter);
+router.use(stripeRouter);
 
 export default router;

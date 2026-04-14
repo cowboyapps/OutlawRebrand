@@ -5,6 +5,7 @@ import { clerkMiddleware } from "@clerk/express";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { handleStripeWebhook } from "./lib/stripeWebhook";
 import path from "path";
 import fs from "fs";
 
@@ -31,6 +32,12 @@ app.use(
 );
 
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook
+);
 
 app.use(cors({ credentials: true, origin: true }));
 app.use("/api", express.json({ limit: "10mb" }));
