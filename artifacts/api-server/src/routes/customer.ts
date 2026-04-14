@@ -430,6 +430,17 @@ router.post(
         return;
       }
 
+      const allowedImages = await db
+        .select({ originalPath: appImagesTable.originalPath })
+        .from(appImagesTable)
+        .where(eq(appImagesTable.appId, session.baseAppId));
+
+      const allowedPaths = new Set(allowedImages.map((i) => i.originalPath));
+      if (!allowedPaths.has(targetPath)) {
+        res.status(400).json({ error: "Target path is not an allowed customizable image" });
+        return;
+      }
+
       const fullTargetPath = path.join(session.decompDir, targetPath);
       const normalized = path.normalize(fullTargetPath);
       if (!normalized.startsWith(session.decompDir + path.sep)) {
