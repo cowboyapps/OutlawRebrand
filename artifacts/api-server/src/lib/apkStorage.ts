@@ -64,7 +64,19 @@ export async function downloadApkFromStorage(appId: number, filename: string, de
     const bucket = storage.bucket(bucketId);
     const file = bucket.file(objectKey);
 
-    const [exists] = await file.exists();
+    let exists = false;
+    try {
+      const [result] = await file.exists();
+      exists = result;
+    } catch (existsErr: unknown) {
+      const code = (existsErr as { code?: number }).code;
+      if (code === 403 || code === 404) {
+        logger.warn({ objectKey, code }, "APK not found in object storage (file does not exist or was never uploaded)");
+        return false;
+      }
+      throw existsErr;
+    }
+
     if (!exists) {
       logger.warn({ objectKey }, "APK not found in object storage");
       return false;
