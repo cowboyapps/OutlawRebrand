@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react";
 import { useAuth } from "@clerk/react";
-import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser, useAdminLogin } from "@/hooks/use-auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,16 +15,20 @@ export default function AdminDashboard() {
   const { signOut, isSignedIn } = useAuth();
   const { logout: adminLogout } = useAdminLogin();
   const queryClient = useQueryClient();
-  const [, setLocation] = useLocation();
 
   const handleSignOut = useCallback(async () => {
-    await adminLogout();
+    try {
+      await adminLogout();
+    } catch {}
+    document.cookie = "admin_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+    document.cookie = "admin_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/api";
+    document.cookie = "admin_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     queryClient.clear();
     if (isSignedIn) {
       await signOut();
     }
-    setLocation("/");
-  }, [adminLogout, queryClient, isSignedIn, signOut, setLocation]);
+    window.location.href = import.meta.env.BASE_URL || "/";
+  }, [adminLogout, queryClient, isSignedIn, signOut]);
 
   return (
     <div className="min-h-screen bg-background">

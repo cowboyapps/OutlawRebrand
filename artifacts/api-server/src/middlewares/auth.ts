@@ -19,6 +19,10 @@ export function createAdminSession(userId: number): string {
   return token;
 }
 
+export function destroyAdminSession(token: string): void {
+  adminSessions.delete(token);
+}
+
 function getAdminSession(token: string): { userId: number } | null {
   const session = adminSessions.get(token);
   if (!session) return null;

@@ -4,7 +4,7 @@ import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { createAdminSession, type AuthRequest } from "../middlewares/auth";
+import { createAdminSession, destroyAdminSession, type AuthRequest } from "../middlewares/auth";
 
 const adminLoginRouter = Router();
 
@@ -87,7 +87,13 @@ adminLoginRouter.post("/auth/admin-login", async (req: AuthRequest, res: Respons
 });
 
 adminLoginRouter.post("/auth/admin-logout", (req: AuthRequest, res: Response) => {
+  const token = req.cookies?.admin_token;
+  if (token) {
+    destroyAdminSession(token);
+  }
   res.clearCookie("admin_token", { path: "/" });
+  res.clearCookie("admin_token", { path: "/api" });
+  res.clearCookie("admin_token");
   res.json({ success: true });
 });
 
