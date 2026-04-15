@@ -96,19 +96,36 @@ router.post("/stripe/verify-and-fulfill", requireAuth, async (req: AuthRequest, 
   try {
     const sessionId = req.body.sessionId as string;
     if (!sessionId) {
+      logger.warn("Verify: no sessionId in request body");
       res.status(400).json({ error: "sessionId is required" });
       return;
     }
 
+    logger.info({ sessionId, reqUserId: req.userId }, "Verify: starting payment verification");
+
     const stripe = await getUncachableStripeClient();
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
+    logger.info({
+      sessionId,
+      paymentStatus: session.payment_status,
+      metadataUserId: session.metadata?.userId,
+      metadataCredits: session.metadata?.credits,
+      metadataCreditPackId: session.metadata?.creditPackId,
+      reqUserId: req.userId,
+    }, "Verify: Stripe session retrieved");
+
     if (session.metadata?.userId !== String(req.userId)) {
+      logger.error({
+        stripeMetaUserId: session.metadata?.userId,
+        reqUserId: req.userId,
+      }, "Verify: userId mismatch between Stripe session and authenticated user");
       res.status(403).json({ error: "Not authorized" });
       return;
     }
 
     if (session.payment_status !== "paid") {
+      logger.warn({ sessionId, paymentStatus: session.payment_status }, "Verify: payment not completed");
       res.json({ success: false, status: session.payment_status });
       return;
     }
@@ -153,26 +170,27 @@ router.post("/stripe/verify-and-fulfill", requireAuth, async (req: AuthRequest, 
           [credits, userId]
         );
         await client.query("COMMIT");
-        logger.info({ userId, credits, sessionId }, "Credits added via checkout verification");
+        logger.info({ userId, credits, sessionId }, "Verify: credits added successfully");
       } else {
         await client.query("ROLLBACK");
-        logger.info({ sessionId }, "Credits already fulfilled for this session");
+        logger.info({ sessionId }, "Verify: credits already fulfilled (idempotent skip)");
       }
 
       const userResult = await pool.query("SELECT credits FROM users WHERE id = $1", [userId]);
       const currentCredits = userResult.rows[0]?.credits ?? 0;
 
+      logger.info({ userId, currentCredits, sessionId }, "Verify: complete");
       res.json({ success: true, status: "paid", credits: currentCredits });
     } catch (txErr) {
       await client.query("ROLLBACK").catch(() => {});
-      logger.error({ err: txErr }, "Failed to fulfill credits during verify");
+      logger.error({ err: txErr, userId, sessionId }, "Verify: transaction failed");
       throw txErr;
     } finally {
       client.release();
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to verify payment";
-    logger.error({ err }, "Stripe verify error");
+    logger.error({ err }, "Verify: unexpected error");
     res.status(500).json({ error: message });
   }
 });

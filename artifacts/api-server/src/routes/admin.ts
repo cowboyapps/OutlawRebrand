@@ -886,6 +886,133 @@ router.get("/admin/purchases", async (req: AuthRequest, res: Response) => {
   }
 });
 
+router.post("/admin/customers/:userId/adjust-credits", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = Number(req.params.userId);
+    const { amount, reason } = req.body;
+    const creditAmount = Number(amount);
+
+    if (!Number.isFinite(creditAmount) || creditAmount === 0) {
+      res.status(400).json({ error: "amount must be a non-zero number" });
+      return;
+    }
+    if (!reason || typeof reason !== "string" || reason.trim().length === 0) {
+      res.status(400).json({ error: "reason is required" });
+      return;
+    }
+
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    if (creditAmount < 0 && user.credits + creditAmount < 0) {
+      res.status(400).json({ error: "Cannot reduce credits below zero" });
+      return;
+    }
+
+    const pool = (await import("@workspace/db")).pool;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      await client.query(
+        `INSERT INTO credit_transactions (user_id, amount, type, description, created_at)
+         VALUES ($1, $2, $3, $4, now())`,
+        [userId, creditAmount, creditAmount > 0 ? "admin_grant" : "admin_deduction", reason.trim()]
+      );
+
+      await client.query(
+        "UPDATE users SET credits = credits + $1 WHERE id = $2",
+        [creditAmount, userId]
+      );
+
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+
+    logger.info({ adminId: req.userId, userId, amount: creditAmount, reason: reason.trim() }, "Admin credit adjustment");
+    res.json({ success: true, newCredits: updated.credits });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to adjust credits";
+    logger.error({ err }, "Admin credit adjustment error");
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post("/admin/fulfill-stripe-session", async (req: AuthRequest, res: Response) => {
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId || typeof sessionId !== "string") {
+      res.status(400).json({ error: "sessionId is required" });
+      return;
+    }
+
+    const { getUncachableStripeClient } = await import("../lib/stripeClient");
+    const stripe = await getUncachableStripeClient();
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (session.payment_status !== "paid") {
+      res.status(400).json({ error: `Session payment_status is '${session.payment_status}', not 'paid'` });
+      return;
+    }
+
+    const userId = Number(session.metadata?.userId);
+    const credits = Number(session.metadata?.credits);
+    const creditPackId = Number(session.metadata?.creditPackId);
+    const amountPaidCents = session.amount_total;
+
+    if (!userId || !credits) {
+      res.status(400).json({ error: "Session metadata missing userId or credits" });
+      return;
+    }
+
+    const pool = (await import("@workspace/db")).pool;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const insertResult = await client.query(
+        `INSERT INTO credit_transactions (user_id, amount, type, description, stripe_session_id, credit_pack_id, amount_paid_cents, created_at)
+         VALUES ($1, $2, 'purchase', $3, $4, $5, $6, now())
+         ON CONFLICT (stripe_session_id) DO NOTHING
+         RETURNING id`,
+        [userId, credits, `Purchased ${credits} credits (admin fulfilled)`, sessionId, creditPackId || null, amountPaidCents]
+      );
+
+      if (insertResult.rows.length > 0) {
+        await client.query(
+          "UPDATE users SET credits = credits + $1 WHERE id = $2",
+          [credits, userId]
+        );
+        await client.query("COMMIT");
+        logger.info({ adminId: req.userId, userId, credits, sessionId }, "Admin fulfilled Stripe session");
+        const userResult = await client.query("SELECT credits FROM users WHERE id = $1", [userId]);
+        res.json({ success: true, fulfilled: true, newCredits: userResult.rows[0]?.credits });
+      } else {
+        await client.query("ROLLBACK");
+        res.json({ success: true, fulfilled: false, message: "Already fulfilled" });
+      }
+    } catch (txErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to fulfill session";
+    logger.error({ err }, "Admin fulfill-stripe-session error");
+    res.status(500).json({ error: message });
+  }
+});
+
 router.get("/admin/stats", async (_req: AuthRequest, res: Response) => {
   try {
     const [appCount] = await db

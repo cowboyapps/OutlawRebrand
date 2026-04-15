@@ -49,26 +49,38 @@ export default function CustomerDashboard() {
     if (paymentParam === "success" && sessionIdParam) {
       setView("buy-credits");
       setPaymentStatus("verifying");
-      apiFetch("/stripe/verify-and-fulfill", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sessionIdParam }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
+
+      const verifyPayment = async () => {
+        try {
+          const res = await apiFetch("/stripe/verify-and-fulfill", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: sessionIdParam }),
+          });
+
+          if (!res.ok) {
+            console.error("Verify failed with status:", res.status);
+            setPaymentStatus("failed");
+            return;
+          }
+
+          const data = await res.json();
           if (data.success && data.status === "paid") {
             setPaymentStatus("success");
           } else {
+            console.error("Verify returned unexpected data:", data);
             setPaymentStatus("failed");
           }
-          refetchUser();
-        })
-        .catch(() => {
+        } catch (err) {
+          console.error("Payment verification error:", err);
           setPaymentStatus("failed");
-        })
-        .finally(() => {
+        } finally {
+          await refetchUser();
           setLocation("/dashboard", { replace: true });
-        });
+        }
+      };
+
+      verifyPayment();
     } else if (paymentParam === "cancelled") {
       setPaymentStatus("cancelled");
       setView("buy-credits");

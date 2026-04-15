@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Users, ArrowLeft, Download, KeyRound } from "lucide-react";
+import { Loader2, Users, ArrowLeft, Download, KeyRound, Plus, Minus } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 interface Customer {
@@ -126,6 +127,10 @@ export default function CustomersTab() {
 
 function CustomerDetailView({ customerId, onBack }: { customerId: number; onBack: () => void }) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [adjustAmount, setAdjustAmount] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [showAdjust, setShowAdjust] = useState(false);
 
   const { data: customer, isLoading } = useQuery<CustomerDetail>({
     queryKey: ["admin", "customers", customerId],
@@ -133,6 +138,32 @@ function CustomerDetailView({ customerId, onBack }: { customerId: number; onBack
       const res = await apiFetch(`/admin/customers/${customerId}`);
       if (!res.ok) throw new Error("Failed to fetch customer details");
       return res.json();
+    },
+  });
+
+  const adjustCreditsMutation = useMutation({
+    mutationFn: async ({ amount, reason }: { amount: number; reason: string }) => {
+      const res = await apiFetch(`/admin/customers/${customerId}/adjust-credits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, reason }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to adjust credits");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Credits Adjusted", description: `New balance: ${data.newCredits} credits` });
+      setAdjustAmount("");
+      setAdjustReason("");
+      setShowAdjust(false);
+      queryClient.invalidateQueries({ queryKey: ["admin", "customers", customerId] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "customers"] });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to adjust credits", variant: "destructive" });
     },
   });
 
@@ -149,6 +180,12 @@ function CustomerDetailView({ customerId, onBack }: { customerId: number; onBack
       toast({ title: "Error", description: "Failed to initiate password reset", variant: "destructive" });
     },
   });
+
+  const handleAdjust = (positive: boolean) => {
+    const amt = Math.abs(Number(adjustAmount));
+    if (!amt || !adjustReason.trim()) return;
+    adjustCreditsMutation.mutate({ amount: positive ? amt : -amt, reason: adjustReason.trim() });
+  };
 
   const statusColor = (status: string) => {
     if (status === "done" || status === "completed") return "default" as const;
@@ -207,7 +244,15 @@ function CustomerDetailView({ customerId, onBack }: { customerId: number; onBack
               <p className="font-medium">{new Date(customer.createdAt).toLocaleDateString()}</p>
             </div>
           </div>
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAdjust(!showAdjust)}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Adjust Credits
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -218,6 +263,49 @@ function CustomerDetailView({ customerId, onBack }: { customerId: number; onBack
               Reset Password
             </Button>
           </div>
+          {showAdjust && (
+            <div className="mt-4 p-4 border rounded-lg space-y-3 bg-muted/30">
+              <p className="text-sm font-medium">Adjust Credits for {customer.name || customer.email}</p>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  placeholder="Amount"
+                  min="1"
+                  value={adjustAmount}
+                  onChange={(e) => setAdjustAmount(e.target.value)}
+                  className="w-28"
+                />
+                <Input
+                  placeholder="Reason (required)"
+                  value={adjustReason}
+                  onChange={(e) => setAdjustReason(e.target.value)}
+                  className="flex-1"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => handleAdjust(true)}
+                  disabled={!adjustAmount || !adjustReason.trim() || adjustCreditsMutation.isPending}
+                >
+                  {adjustCreditsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                  Add Credits
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => handleAdjust(false)}
+                  disabled={!adjustAmount || !adjustReason.trim() || adjustCreditsMutation.isPending}
+                >
+                  <Minus className="h-4 w-4 mr-1" />
+                  Deduct Credits
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowAdjust(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
