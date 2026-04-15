@@ -26,6 +26,28 @@ const router: IRouter = Router();
 const WORK_DIR = path.join(os.tmpdir(), "apk-rebrander");
 const BASE_APKS_DIR = path.join(process.cwd(), "data", "base-apks");
 
+async function copyDirViaTar(srcDir: string, destDir: string): Promise<void> {
+  await fs.mkdir(destDir, { recursive: true });
+  const srcParent = path.dirname(srcDir);
+  const srcName = path.basename(srcDir);
+  const { exec } = await import("child_process");
+  return new Promise((resolve, reject) => {
+    const cmd = `tar cf - -C ${JSON.stringify(srcParent)} ${JSON.stringify(srcName)} | tar xf - -C ${JSON.stringify(path.dirname(destDir))}`;
+    const child = exec(cmd, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (err) => {
+      if (err) reject(err);
+      else {
+        const extracted = path.join(path.dirname(destDir), srcName);
+        if (extracted !== destDir) {
+          fs.rename(extracted, destDir).then(resolve).catch(reject);
+        } else {
+          resolve();
+        }
+      }
+    });
+    child.on("error", reject);
+  });
+}
+
 router.use("/customer", requireAuth);
 
 const imageUpload = multer({
@@ -116,8 +138,7 @@ async function restoreSession(jobId: number, userId: number): Promise<RebrandSes
 
     await fs.mkdir(sessionDir, { recursive: true });
     try {
-      await execFileAsync("cp", ["-rl", baseDecompDir, decompDir], { timeout: 300000 });
-      await execFileAsync("chmod", ["-R", "u+w", decompDir], { timeout: 60000 });
+      await copyDirViaTar(baseDecompDir, decompDir);
     } catch (err) {
       logger.error({ err, jobId }, "restoreSession: failed to copy decompiled dir");
       return null;
@@ -303,8 +324,7 @@ router.post("/customer/rebrand/start", async (req: AuthRequest, res: Response) =
 
     (async () => {
       try {
-        await execFileAsync("cp", ["-rl", baseDecompDir, decompDir], { timeout: 300000 });
-        await execFileAsync("chmod", ["-R", "u+w", decompDir], { timeout: 60000 });
+        await copyDirViaTar(baseDecompDir, decompDir);
 
         const session: RebrandSession = {
           jobId: job.id,
@@ -659,8 +679,7 @@ router.post("/customer/rebrand/:jobId/build", async (req: AuthRequest, res: Resp
       const baseDecompDir = path.join(BASE_APKS_DIR, String(app.id), "decompiled");
       try {
         await fs.rm(session.decompDir, { recursive: true, force: true });
-        await execFileAsync("cp", ["-rl", baseDecompDir, session.decompDir], { timeout: 300000 });
-        await execFileAsync("chmod", ["-R", "u+w", session.decompDir], { timeout: 60000 });
+        await copyDirViaTar(baseDecompDir, session.decompDir);
         session.status = "ready";
         session.error = undefined;
         session.progress = "Fresh files restored for retry";

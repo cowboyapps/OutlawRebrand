@@ -59,9 +59,32 @@ export default function MyBuilds({ highlightJobId }: { highlightJobId: number | 
     refetchInterval: 10000,
   });
 
+  const [downloading, setDownloading] = useState<number | null>(null);
+
   const handleDownload = async (jobId: number) => {
-    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-    window.open(`${base}/api/customer/builds/${jobId}/download`, "_blank");
+    setDownloading(jobId);
+    try {
+      const res = await apiFetch(`/customer/builds/${jobId}/download`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Download failed" }));
+        throw new Error(data.error || "Download failed");
+      }
+      const blob = await res.blob();
+      const build = builds.find((b: Build) => b.id === jobId);
+      const fileName = build?.outputFileName || `build-${jobId}.apk`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setDownloading(null);
+    }
   };
 
   const handleUnlock = async (jobId: number) => {
@@ -148,7 +171,7 @@ export default function MyBuilds({ highlightJobId }: { highlightJobId: number | 
                         <Badge variant={config.variant} className="gap-1">
                           {config.icon} {config.label}
                         </Badge>
-                        {build.errorMessage && (
+                        {build.errorMessage && build.status === "error" && (
                           <p className="text-xs text-destructive mt-1 max-w-xs truncate">{build.errorMessage}</p>
                         )}
                       </TableCell>
@@ -168,8 +191,14 @@ export default function MyBuilds({ highlightJobId }: { highlightJobId: number | 
                           <Button
                             size="sm"
                             onClick={() => handleDownload(build.id)}
+                            disabled={downloading === build.id}
                           >
-                            <Download className="h-4 w-4 mr-1" /> Download
+                            {downloading === build.id ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4 mr-1" />
+                            )}
+                            {downloading === build.id ? "Downloading..." : "Download"}
                           </Button>
                         )}
                         {build.status === "done" && !build.creditsDeducted && (
