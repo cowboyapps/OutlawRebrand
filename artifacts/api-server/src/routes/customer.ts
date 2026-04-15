@@ -444,7 +444,7 @@ router.put("/customer/rebrand/:jobId/panel-url", async (req: AuthRequest, res: R
     const newUrl = panelUrl.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
 
     let replacements = 0;
-    const textExts = [".xml", ".smali", ".json", ".properties", ".txt", ".yml", ".yaml"];
+    const textExts = [".xml", ".json", ".properties", ".txt", ".yml", ".yaml"];
 
     async function replaceInDir(dir: string): Promise<void> {
       try {
