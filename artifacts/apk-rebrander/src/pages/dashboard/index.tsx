@@ -3,6 +3,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { UserButton } from "@clerk/react";
 import { useLocation, useSearch } from "wouter";
+import { Coins } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import AppBrowser from "./app-browser";
 import RebrandWizard from "./rebrand-wizard";
@@ -151,8 +152,9 @@ export default function CustomerDashboard() {
           <div className="flex items-center gap-4">
             <button
               onClick={() => { setPaymentStatus(null); setView("buy-credits"); }}
-              className="text-sm font-medium px-3 py-1 bg-muted rounded-full hover:bg-muted/80 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 bg-yellow-500/15 text-yellow-500 border border-yellow-500/30 rounded-full hover:bg-yellow-500/25 transition-colors cursor-pointer"
             >
+              <Coins className="h-4 w-4" />
               {user?.credits ?? 0} credits
             </button>
             <UserButton />
