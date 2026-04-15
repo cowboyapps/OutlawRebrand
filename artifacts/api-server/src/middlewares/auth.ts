@@ -300,6 +300,10 @@ export const requireAuth = async (
       res.status(500).json({ error: "Failed to sync user" });
       return;
     }
+    if (!dbUser.isActive && !dbUser.isAdmin) {
+      res.status(403).json({ error: "Account suspended. Please contact support." });
+      return;
+    }
     req.userId = dbUser.id;
     req.dbUser = dbUser;
     next();

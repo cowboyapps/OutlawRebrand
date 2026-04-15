@@ -8,6 +8,7 @@ export const usersTable = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   name: text("name").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
   credits: integer("credits").notNull().default(0),
   stripeCustomerId: text("stripe_customer_id"),
   clerkId: text("clerk_id").unique(),

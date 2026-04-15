@@ -710,6 +710,7 @@ router.get("/admin/customers", async (_req: AuthRequest, res: Response) => {
       email: c.email,
       name: c.name,
       credits: c.credits,
+      isActive: c.isActive,
       createdAt: c.createdAt,
     }));
 
@@ -734,11 +735,20 @@ router.get("/admin/customers/:id", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const builds = await db
-      .select()
+    const buildsRaw = await db
+      .select({
+        build: customerBuildsTable,
+        baseAppName: appsTable.name,
+      })
       .from(customerBuildsTable)
+      .leftJoin(appsTable, eq(customerBuildsTable.baseApkId, appsTable.id))
       .where(eq(customerBuildsTable.userId, custId))
       .orderBy(desc(customerBuildsTable.createdAt));
+
+    const builds = buildsRaw.map((b) => ({
+      ...b.build,
+      baseAppName: b.baseAppName,
+    }));
 
     const transactions = await db
       .select()
@@ -751,6 +761,7 @@ router.get("/admin/customers/:id", async (req: AuthRequest, res: Response) => {
       email: customer.email,
       name: customer.name,
       credits: customer.credits,
+      isActive: customer.isActive,
       clerkId: customer.clerkId,
       stripeCustomerId: customer.stripeCustomerId,
       createdAt: customer.createdAt,
@@ -854,6 +865,142 @@ router.get("/admin/customers/:custId/builds/:buildId/download", async (req: Auth
     res.send(data);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to download build";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.delete("/admin/customers/:custId/builds/:buildId", async (req: AuthRequest, res: Response) => {
+  try {
+    const custId = Number(req.params.custId);
+    const buildId = Number(req.params.buildId);
+    const [build] = await db
+      .select()
+      .from(customerBuildsTable)
+      .where(and(eq(customerBuildsTable.id, buildId), eq(customerBuildsTable.userId, custId)))
+      .limit(1);
+
+    if (!build) {
+      res.status(404).json({ error: "Build not found" });
+      return;
+    }
+
+    if (build.outputPath) {
+      try {
+        await fs.rm(build.outputPath, { force: true });
+      } catch {}
+    }
+
+    if (build.sessionId) {
+      const sessionDir = path.join("/tmp/apk-rebrander/sessions", build.sessionId);
+      try {
+        await fs.rm(sessionDir, { recursive: true, force: true });
+      } catch {}
+    }
+
+    await db.delete(customerBuildsTable).where(eq(customerBuildsTable.id, buildId));
+
+    res.json({ success: true, message: "Build deleted" });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to delete build";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.put("/admin/customers/:id/suspend", async (req: AuthRequest, res: Response) => {
+  try {
+    const custId = Number(req.params.id);
+    const { suspended } = req.body;
+    const [customer] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.id, custId), eq(usersTable.isAdmin, false)))
+      .limit(1);
+
+    if (!customer) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    await db
+      .update(usersTable)
+      .set({ isActive: !suspended })
+      .where(eq(usersTable.id, custId));
+
+    res.json({ success: true, isActive: !suspended });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to update customer status";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.put("/admin/customers/:id/update", async (req: AuthRequest, res: Response) => {
+  try {
+    const custId = Number(req.params.id);
+    const { name, email } = req.body;
+    const [customer] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.id, custId), eq(usersTable.isAdmin, false)))
+      .limit(1);
+
+    if (!customer) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (name && typeof name === "string") updates.name = name.trim();
+    if (email && typeof email === "string") updates.email = email.trim();
+
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ error: "No valid fields to update" });
+      return;
+    }
+
+    await db.update(usersTable).set(updates).where(eq(usersTable.id, custId));
+
+    res.json({ success: true, message: "Customer updated" });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to update customer";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.delete("/admin/customers/:id", async (req: AuthRequest, res: Response) => {
+  try {
+    const custId = Number(req.params.id);
+    const [customer] = await db
+      .select()
+      .from(usersTable)
+      .where(and(eq(usersTable.id, custId), eq(usersTable.isAdmin, false)))
+      .limit(1);
+
+    if (!customer) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    const builds = await db
+      .select()
+      .from(customerBuildsTable)
+      .where(eq(customerBuildsTable.userId, custId));
+
+    for (const build of builds) {
+      if (build.outputPath) {
+        try { await fs.rm(build.outputPath, { force: true }); } catch {}
+      }
+      if (build.sessionId) {
+        try { await fs.rm(path.join("/tmp/apk-rebrander/sessions", build.sessionId), { recursive: true, force: true }); } catch {}
+      }
+    }
+
+    await db.delete(creditTransactionsTable).where(eq(creditTransactionsTable.userId, custId));
+    await db.delete(customerBuildsTable).where(eq(customerBuildsTable.userId, custId));
+    await db.delete(usersTable).where(eq(usersTable.id, custId));
+
+    res.json({ success: true, message: "Customer deleted" });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to delete customer";
     res.status(500).json({ error: message });
   }
 });
