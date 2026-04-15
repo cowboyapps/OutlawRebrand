@@ -43,7 +43,7 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 ## Database Schema (PostgreSQL)
 
 - **users**: id, email, password_hash, name, is_admin, credits, stripe_customer_id, clerk_id
-- **base_apks**: id, name, slug, description, credit_cost, file_path, package_name, version_name, icon_path, is_active, image_labels (JSON text)
+- **base_apks**: id, name, slug, description, credit_cost, file_path, package_name, version_name, icon_path, is_active, image_labels (JSON text), decompile_status, decompile_error
 - **credit_packages**: id, name, credits, price_usd, stripe_price_id, is_active
 - **credit_transactions**: id, user_id, amount, type, description, stripe_session_id, rebrand_job_id, credit_pack_id, amount_paid_cents
 - **rebrand_jobs**: id, user_id, base_apk_id, app_name, status, session_id, output_path, credits_cost, credits_deducted, error_message, output_file_name

@@ -14,6 +14,8 @@ export const appsTable = pgTable("base_apks", {
   iconPath: text("icon_path"),
   isActive: boolean("is_active").notNull().default(true),
   imageLabels: text("image_labels"),
+  decompileStatus: text("decompile_status").default("pending"),
+  decompileError: text("decompile_error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

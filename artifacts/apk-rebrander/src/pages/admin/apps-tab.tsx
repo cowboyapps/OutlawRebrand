@@ -1,14 +1,15 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Trash2, Settings, ImageIcon, Loader2, Check, X, Package } from "lucide-react";
+import { Upload, Trash2, Settings, ImageIcon, Loader2, Check, X, Package, RefreshCw, AlertCircle, CheckCircle2, CloudUpload, Cpu, HardDrive } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 interface AppData {
@@ -21,6 +22,8 @@ interface AppData {
   creditCost: number;
   isActive: boolean;
   imageCount: number;
+  decompileStatus: string | null;
+  decompileError: string | null;
   createdAt: string;
 }
 
@@ -35,6 +38,17 @@ interface AppImage {
   label: string;
 }
 
+type UploadStage = "idle" | "uploading" | "saving_storage" | "decompiling" | "done" | "error";
+
+const stageConfig: Record<UploadStage, { label: string; icon: React.ReactNode; pct: number }> = {
+  idle: { label: "Ready", icon: <Upload className="h-4 w-4" />, pct: 0 },
+  uploading: { label: "Uploading APK...", icon: <CloudUpload className="h-4 w-4" />, pct: 0 },
+  saving_storage: { label: "Saving to cloud storage...", icon: <HardDrive className="h-4 w-4" />, pct: 0 },
+  decompiling: { label: "Decompiling APK (this may take several minutes)...", icon: <Cpu className="h-4 w-4" />, pct: 75 },
+  done: { label: "Complete!", icon: <CheckCircle2 className="h-4 w-4" />, pct: 100 },
+  error: { label: "Failed", icon: <AlertCircle className="h-4 w-4" />, pct: 0 },
+};
+
 export default function AppsTab() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -47,6 +61,11 @@ export default function AppsTab() {
   const [showImages, setShowImages] = useState(false);
   const [editingApp, setEditingApp] = useState<AppData | null>(null);
 
+  const [uploadStage, setUploadStage] = useState<UploadStage>("idle");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [pollingAppId, setPollingAppId] = useState<number | null>(null);
+
   const { data: apps = [], isLoading } = useQuery<AppData[]>({
     queryKey: ["admin", "apps"],
     queryFn: async () => {
@@ -54,7 +73,67 @@ export default function AppsTab() {
       if (!res.ok) throw new Error("Failed to fetch apps");
       return res.json();
     },
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return false;
+      const hasProcessing = data.some(
+        (a) => a.decompileStatus === "pending" || a.decompileStatus === "decompiling" || a.decompileStatus === "uploading_storage"
+      );
+      return hasProcessing ? 5000 : false;
+    },
   });
+
+  const pollStatus = useCallback(async (appId: number) => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch(`/admin/apps/${appId}/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.decompileStatus === "uploading_storage") {
+          setUploadStage("saving_storage");
+          setUploadProgress(55);
+        } else if (data.decompileStatus === "decompiling") {
+          setUploadStage("decompiling");
+          setUploadProgress(70);
+        } else if (data.decompileStatus === "done") {
+          setUploadStage("done");
+          setUploadProgress(100);
+          clearInterval(interval);
+          queryClient.invalidateQueries({ queryKey: ["admin", "apps"] });
+          setTimeout(() => {
+            setShowUpload(false);
+            resetUpload();
+          }, 2000);
+        } else if (data.decompileStatus === "error") {
+          setUploadStage("error");
+          setUploadError(data.decompileError || "Decompilation failed");
+          clearInterval(interval);
+          queryClient.invalidateQueries({ queryKey: ["admin", "apps"] });
+        }
+      } catch {}
+    }, 3000);
+    return interval;
+  }, [queryClient]);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (pollingAppId) {
+      pollStatus(pollingAppId).then((iv) => { interval = iv; });
+    }
+    return () => { if (interval) clearInterval(interval); };
+  }, [pollingAppId, pollStatus]);
+
+  const resetUpload = () => {
+    setUploading(false);
+    setUploadStage("idle");
+    setUploadProgress(0);
+    setUploadError(null);
+    setUploadName("");
+    setUploadCost("1");
+    setPollingAppId(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -84,7 +163,19 @@ export default function AppsTab() {
     },
   });
 
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const retryDecompile = async (appId: number) => {
+    try {
+      const res = await apiFetch(`/admin/apps/${appId}/retry-decompile`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Retry failed");
+      }
+      toast({ title: "Retrying decompilation..." });
+      queryClient.invalidateQueries({ queryKey: ["admin", "apps"] });
+    } catch (err) {
+      toast({ title: "Retry failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    }
+  };
 
   const handleUpload = async () => {
     const file = fileInputRef.current?.files?.[0];
@@ -93,7 +184,10 @@ export default function AppsTab() {
       return;
     }
     setUploading(true);
+    setUploadStage("uploading");
     setUploadProgress(0);
+    setUploadError(null);
+
     try {
       const CHUNK_SIZE = 5 * 1024 * 1024;
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -133,8 +227,10 @@ export default function AppsTab() {
           const err = await chunkRes.json();
           throw new Error(err.error || `Chunk ${i} failed`);
         }
-        setUploadProgress(Math.round(((i + 1) / totalChunks) * 100));
+        setUploadProgress(Math.round(((i + 1) / totalChunks) * 50));
       }
+
+      setUploadProgress(50);
 
       const completeRes = await apiFetch("/admin/apps/upload/complete", {
         method: "POST",
@@ -146,19 +242,42 @@ export default function AppsTab() {
         throw new Error(err.error || "Failed to finalize upload");
       }
 
-      toast({ title: "Upload started", description: "The APK is being decompiled. This may take a few minutes." });
-      setShowUpload(false);
-      setUploadName("");
-      setUploadCost("1");
-      setUploadProgress(0);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["admin", "apps"] }), 5000);
+      const completeData = await completeRes.json();
+      setUploadStage("saving_storage");
+      setUploadProgress(55);
+      setPollingAppId(completeData.id);
     } catch (err) {
-      toast({ title: "Upload failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
+      setUploadStage("error");
+      setUploadError(err instanceof Error ? err.message : "Unknown error");
       setUploading(false);
     }
   };
+
+  const getDecompileStatusBadge = (app: AppData) => {
+    const status = app.decompileStatus;
+    if (!status || status === "done") {
+      return <Badge variant="default">Ready</Badge>;
+    }
+    if (status === "pending" || status === "uploading_storage" || status === "decompiling") {
+      return (
+        <Badge variant="secondary" className="gap-1">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {status === "decompiling" ? "Decompiling" : status === "uploading_storage" ? "Saving" : "Pending"}
+        </Badge>
+      );
+    }
+    if (status === "error") {
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <AlertCircle className="h-3 w-3" />
+          Error
+        </Badge>
+      );
+    }
+    return <Badge variant={app.isActive ? "default" : "outline"}>{app.isActive ? "Active" : "Inactive"}</Badge>;
+  };
+
+  const overallPct = uploadStage === "uploading" ? uploadProgress : stageConfig[uploadStage]?.pct ?? uploadProgress;
 
   return (
     <div className="space-y-4">
@@ -211,16 +330,30 @@ export default function AppsTab() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={app.isActive ? "default" : "outline"}>
-                      {app.isActive ? "Active" : "Inactive"}
-                    </Badge>
+                    {getDecompileStatusBadge(app)}
+                    {app.decompileStatus === "error" && app.decompileError && (
+                      <p className="text-xs text-destructive mt-1 max-w-[200px] truncate" title={app.decompileError}>
+                        {app.decompileError}
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell className="text-right space-x-1">
+                    {app.decompileStatus === "error" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => retryDecompile(app.id)}
+                        title="Retry decompilation"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => { setSelectedApp(app); setShowImages(true); }}
                       title="Configure images"
+                      disabled={app.decompileStatus !== "done" && app.decompileStatus !== null && app.decompileStatus !== ""}
                     >
                       <ImageIcon className="h-4 w-4" />
                     </Button>
@@ -252,45 +385,77 @@ export default function AppsTab() {
         </Card>
       )}
 
-      <Dialog open={showUpload} onOpenChange={setShowUpload}>
+      <Dialog open={showUpload} onOpenChange={(open) => { if (!uploading) { setShowUpload(open); if (!open) resetUpload(); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Upload Base APK</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>APK File</Label>
-              <Input ref={fileInputRef} type="file" accept=".apk" disabled={uploading} />
-            </div>
-            <div className="space-y-2">
-              <Label>App Name</Label>
-              <Input value={uploadName} onChange={(e) => setUploadName(e.target.value)} placeholder="e.g. XCIPTV" disabled={uploading} />
-            </div>
-            <div className="space-y-2">
-              <Label>Credit Cost</Label>
-              <Input type="number" min="1" value={uploadCost} onChange={(e) => setUploadCost(e.target.value)} disabled={uploading} />
-            </div>
-          </div>
-          {uploading && uploadProgress > 0 && (
-            <div className="space-y-1">
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>Uploading...</span>
-                <span>{uploadProgress}%</span>
+
+          {uploadStage === "idle" || uploadStage === "error" ? (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>APK File</Label>
+                <Input ref={fileInputRef} type="file" accept=".apk" disabled={uploading} />
               </div>
-              <div className="w-full bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%` }}
-                />
+              <div className="space-y-2">
+                <Label>App Name</Label>
+                <Input value={uploadName} onChange={(e) => setUploadName(e.target.value)} placeholder="e.g. XCIPTV" disabled={uploading} />
               </div>
+              <div className="space-y-2">
+                <Label>Credit Cost</Label>
+                <Input type="number" min="1" value={uploadCost} onChange={(e) => setUploadCost(e.target.value)} disabled={uploading} />
+              </div>
+              {uploadStage === "error" && uploadError && (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/20">
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                  <p className="text-sm text-destructive">{uploadError}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-6 space-y-6">
+              <div className="space-y-3">
+                <StageRow stage="uploading" label="Upload APK to server" current={uploadStage} />
+                <StageRow stage="saving_storage" label="Save to cloud storage" current={uploadStage} />
+                <StageRow stage="decompiling" label="Decompile APK" current={uploadStage} />
+                <StageRow stage="done" label="Complete" current={uploadStage} />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">{stageConfig[uploadStage]?.label}</span>
+                  <span className="font-medium">{overallPct}%</span>
+                </div>
+                <Progress value={overallPct} className="h-2" />
+              </div>
+
+              {uploadStage === "decompiling" && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Large APKs can take up to 10 minutes to decompile. You can close this dialog — processing continues in the background.
+                </p>
+              )}
             </div>
           )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUpload(false)} disabled={uploading}>Cancel</Button>
-            <Button onClick={handleUpload} disabled={uploading}>
-              {uploading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {uploading ? `Uploading ${uploadProgress}%` : "Upload"}
-            </Button>
+            {uploadStage === "idle" || uploadStage === "error" ? (
+              <>
+                <Button variant="outline" onClick={() => { setShowUpload(false); resetUpload(); }} disabled={uploading}>Cancel</Button>
+                <Button onClick={handleUpload} disabled={uploading}>
+                  {uploading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Upload
+                </Button>
+              </>
+            ) : uploadStage === "done" ? (
+              <Button onClick={() => { setShowUpload(false); resetUpload(); }}>
+                <Check className="h-4 w-4 mr-2" />
+                Done
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={() => { setShowUpload(false); setPollingAppId(null); resetUpload(); }}>
+                Close (continues in background)
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -310,6 +475,37 @@ export default function AppsTab() {
           onClose={() => { setShowImages(false); setSelectedApp(null); queryClient.invalidateQueries({ queryKey: ["admin", "apps"] }); }}
         />
       )}
+    </div>
+  );
+}
+
+const stageOrder: UploadStage[] = ["uploading", "saving_storage", "decompiling", "done"];
+
+function StageRow({ stage, label, current }: { stage: UploadStage; label: string; current: UploadStage }) {
+  const currentIdx = stageOrder.indexOf(current);
+  const stageIdx = stageOrder.indexOf(stage);
+  const isComplete = currentIdx > stageIdx || current === "done";
+  const isActive = current === stage && current !== "done";
+  const isPending = currentIdx < stageIdx && current !== "done";
+
+  return (
+    <div className={`flex items-center gap-3 ${isPending ? "opacity-40" : ""}`}>
+      {isComplete ? (
+        <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
+          <Check className="h-3.5 w-3.5 text-green-500" />
+        </div>
+      ) : isActive ? (
+        <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+          <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+        </div>
+      ) : (
+        <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center shrink-0">
+          <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />
+        </div>
+      )}
+      <span className={`text-sm ${isActive ? "font-medium text-foreground" : isComplete ? "text-muted-foreground" : "text-muted-foreground/60"}`}>
+        {label}
+      </span>
     </div>
   );
 }

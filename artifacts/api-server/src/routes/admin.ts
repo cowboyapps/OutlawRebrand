@@ -125,6 +125,11 @@ router.post("/admin/apps/upload", upload.single("apk"), async (req: AuthRequest,
       .set({ filePath: apkPath })
       .where(eq(appsTable.id, inserted.id));
 
+    await db
+      .update(appsTable)
+      .set({ decompileStatus: "uploading_storage" })
+      .where(eq(appsTable.id, inserted.id));
+
     res.json({
       id: inserted.id,
       name,
@@ -133,9 +138,21 @@ router.post("/admin/apps/upload", upload.single("apk"), async (req: AuthRequest,
     });
 
     try {
+      await uploadApkToStorage(inserted.id, apkPath);
+      logger.info({ appId: inserted.id }, "APK saved to persistent storage");
+    } catch (storageErr) {
+      logger.error({ err: storageErr, appId: inserted.id }, "Failed to upload APK to persistent storage (non-fatal, continuing)");
+    }
+
+    await db
+      .update(appsTable)
+      .set({ decompileStatus: "decompiling" })
+      .where(eq(appsTable.id, inserted.id));
+
+    try {
       const apktoolCmd = await getApktoolPath();
       await execFileAsync(apktoolCmd, ["d", "-f", "-o", decompDir, apkPath], {
-        timeout: 300000,
+        timeout: 600000,
         maxBuffer: 50 * 1024 * 1024,
       });
 
@@ -149,18 +166,19 @@ router.post("/admin/apps/upload", upload.single("apk"), async (req: AuthRequest,
         .set({
           packageName: packageMatch ? packageMatch[1] : null,
           versionName: versionMatch ? versionMatch[1] : null,
+          decompileStatus: "done",
+          decompileError: null,
         })
         .where(eq(appsTable.id, inserted.id));
 
       logger.info(`App ${inserted.id} decompiled successfully`);
-
-      uploadApkToStorage(inserted.id, apkPath).catch((storageErr) => {
-        logger.error({ err: storageErr, appId: inserted.id }, "Failed to upload APK to persistent storage (non-fatal)");
-      });
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown decompilation error";
       logger.error({ err }, `Failed to decompile app ${inserted.id}`);
-      await db.delete(appsTable).where(eq(appsTable.id, inserted.id));
-      await fs.rm(appDir, { recursive: true, force: true }).catch(() => {});
+      await db
+        .update(appsTable)
+        .set({ decompileStatus: "error", decompileError: errMsg })
+        .where(eq(appsTable.id, inserted.id));
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Upload failed";
@@ -285,12 +303,29 @@ router.post("/admin/apps/upload/complete", async (req: AuthRequest, res: Respons
 
     const decompDir = path.join(appDir, "decompiled");
 
+    await db
+      .update(appsTable)
+      .set({ decompileStatus: "uploading_storage" })
+      .where(eq(appsTable.id, inserted.id));
+
     res.json({ id: inserted.id, name, slug, status: "decompiling" });
+
+    try {
+      await uploadApkToStorage(inserted.id, apkPath);
+      logger.info({ appId: inserted.id }, "APK saved to persistent storage (chunked)");
+    } catch (storageErr) {
+      logger.error({ err: storageErr, appId: inserted.id }, "Failed to upload APK to persistent storage (non-fatal, continuing)");
+    }
+
+    await db
+      .update(appsTable)
+      .set({ decompileStatus: "decompiling" })
+      .where(eq(appsTable.id, inserted.id));
 
     try {
       const apktoolCmd = await getApktoolPath();
       await execFileAsync(apktoolCmd, ["d", "-f", "-o", decompDir, apkPath], {
-        timeout: 300000,
+        timeout: 600000,
         maxBuffer: 50 * 1024 * 1024,
       });
 
@@ -304,18 +339,19 @@ router.post("/admin/apps/upload/complete", async (req: AuthRequest, res: Respons
         .set({
           packageName: packageMatch ? packageMatch[1] : null,
           versionName: versionMatch ? versionMatch[1] : null,
+          decompileStatus: "done",
+          decompileError: null,
         })
         .where(eq(appsTable.id, inserted.id));
 
       logger.info(`App ${inserted.id} decompiled successfully (chunked upload)`);
-
-      uploadApkToStorage(inserted.id, apkPath).catch((storageErr) => {
-        logger.error({ err: storageErr, appId: inserted.id }, "Failed to upload APK to persistent storage (non-fatal)");
-      });
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown decompilation error";
       logger.error({ err }, `Failed to decompile app ${inserted.id}`);
-      await db.delete(appsTable).where(eq(appsTable.id, inserted.id));
-      await fs.rm(appDir, { recursive: true, force: true }).catch(() => {});
+      await db
+        .update(appsTable)
+        .set({ decompileStatus: "error", decompileError: errMsg })
+        .where(eq(appsTable.id, inserted.id));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Upload completion failed";
@@ -343,6 +379,94 @@ router.get("/admin/apps", async (_req: AuthRequest, res: Response) => {
     res.json(appsWithImages);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to list apps";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.get("/admin/apps/:id/status", async (req: AuthRequest, res: Response) => {
+  try {
+    const appId = Number(req.params.id);
+    const [app] = await db
+      .select({
+        id: appsTable.id,
+        decompileStatus: appsTable.decompileStatus,
+        decompileError: appsTable.decompileError,
+        packageName: appsTable.packageName,
+        versionName: appsTable.versionName,
+      })
+      .from(appsTable)
+      .where(eq(appsTable.id, appId));
+    if (!app) {
+      res.status(404).json({ error: "App not found" });
+      return;
+    }
+    res.json(app);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to get status";
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post("/admin/apps/:id/retry-decompile", async (req: AuthRequest, res: Response) => {
+  try {
+    const appId = Number(req.params.id);
+    const [app] = await db
+      .select()
+      .from(appsTable)
+      .where(eq(appsTable.id, appId));
+    if (!app) {
+      res.status(404).json({ error: "App not found" });
+      return;
+    }
+    if (app.decompileStatus !== "error") {
+      res.status(400).json({ error: "App is not in error state" });
+      return;
+    }
+
+    await db
+      .update(appsTable)
+      .set({ decompileStatus: "decompiling", decompileError: null })
+      .where(eq(appsTable.id, appId));
+
+    res.json({ status: "retrying" });
+
+    const appDir = path.join(BASE_APKS_DIR, String(appId));
+    const decompDir = path.join(appDir, "decompiled");
+    const apkPath = app.filePath;
+
+    try {
+      const apktoolCmd = await getApktoolPath();
+      await execFileAsync(apktoolCmd, ["d", "-f", "-o", decompDir, apkPath], {
+        timeout: 600000,
+        maxBuffer: 50 * 1024 * 1024,
+      });
+
+      const manifestPath = path.join(decompDir, "AndroidManifest.xml");
+      const manifest = await fs.readFile(manifestPath, "utf-8");
+      const packageMatch = manifest.match(/package="([^"]+)"/);
+      const versionMatch = manifest.match(/android:versionName="([^"]+)"/);
+
+      await db
+        .update(appsTable)
+        .set({
+          packageName: packageMatch ? packageMatch[1] : null,
+          versionName: versionMatch ? versionMatch[1] : null,
+          decompileStatus: "done",
+          decompileError: null,
+        })
+        .where(eq(appsTable.id, appId));
+
+      logger.info(`App ${appId} re-decompiled successfully`);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown decompilation error";
+      logger.error({ err }, `Failed to re-decompile app ${appId}`);
+      await db
+        .update(appsTable)
+        .set({ decompileStatus: "error", decompileError: errMsg })
+        .where(eq(appsTable.id, appId));
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to retry";
     res.status(500).json({ error: message });
   }
 });
