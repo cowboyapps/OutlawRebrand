@@ -1,5 +1,5 @@
 import { Storage } from "@google-cloud/storage";
-import fs from "fs/promises";
+import fsPromises from "fs/promises";
 import { createReadStream, createWriteStream } from "fs";
 import path from "path";
 import { logger } from "./logger";
@@ -82,7 +82,7 @@ export async function downloadApkFromStorage(appId: number, filename: string, de
       return false;
     }
 
-    await fs.mkdir(path.dirname(destPath), { recursive: true });
+    await fsPromises.mkdir(path.dirname(destPath), { recursive: true });
 
     await new Promise<void>((resolve, reject) => {
       const readStream = file.createReadStream();
@@ -112,6 +112,86 @@ export async function apkExistsInStorage(appId: number, filename: string): Promi
     const [exists] = await file.exists();
     return exists;
   } catch {
+    return false;
+  }
+}
+
+function getBuildObjectKey(jobId: number): string {
+  return `builds/${jobId}/output.apk`;
+}
+
+export async function uploadBuildToStorage(jobId: number, localFilePath: string): Promise<string> {
+  const storage = getStorage();
+  const bucketId = getBucketId();
+  const objectKey = getBuildObjectKey(jobId);
+
+  logger.info({ jobId, objectKey, localFilePath }, "Uploading build APK to object storage");
+
+  const bucket = storage.bucket(bucketId);
+  const file = bucket.file(objectKey);
+
+  await new Promise<void>((resolve, reject) => {
+    const readStream = createReadStream(localFilePath);
+    const writeStream = file.createWriteStream({
+      resumable: false,
+      contentType: "application/vnd.android.package-archive",
+    });
+
+    readStream.on("error", reject);
+    writeStream.on("error", reject);
+    writeStream.on("finish", resolve);
+    readStream.pipe(writeStream);
+  });
+
+  logger.info({ jobId, objectKey }, "Build APK uploaded to object storage");
+  return objectKey;
+}
+
+export async function downloadBuildFromStorage(jobId: number, destPath: string): Promise<boolean> {
+  try {
+    const storage = getStorage();
+    const bucketId = getBucketId();
+    const objectKey = getBuildObjectKey(jobId);
+
+    logger.info({ jobId, objectKey, destPath }, "Downloading build APK from object storage");
+
+    const bucket = storage.bucket(bucketId);
+    const file = bucket.file(objectKey);
+
+    let exists = false;
+    try {
+      const [result] = await file.exists();
+      exists = result;
+    } catch (existsErr: unknown) {
+      const code = (existsErr as { code?: number }).code;
+      if (code === 403 || code === 404) {
+        logger.warn({ objectKey, code }, "Build APK not found in object storage");
+        return false;
+      }
+      throw existsErr;
+    }
+
+    if (!exists) {
+      logger.warn({ objectKey }, "Build APK not found in object storage");
+      return false;
+    }
+
+    await fsPromises.mkdir(path.dirname(destPath), { recursive: true });
+
+    await new Promise<void>((resolve, reject) => {
+      const readStream = file.createReadStream();
+      const writeStream = createWriteStream(destPath);
+
+      readStream.on("error", reject);
+      writeStream.on("error", reject);
+      writeStream.on("finish", resolve);
+      readStream.pipe(writeStream);
+    });
+
+    logger.info({ jobId, objectKey, destPath }, "Build APK downloaded from object storage");
+    return true;
+  } catch (err) {
+    logger.error({ err, jobId }, "Failed to download build APK from object storage");
     return false;
   }
 }

@@ -18,7 +18,7 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { logger } from "../lib/logger";
-import { downloadApkFromStorage } from "../lib/apkStorage";
+import { downloadApkFromStorage, uploadBuildToStorage, downloadBuildFromStorage } from "../lib/apkStorage";
 
 const execFileAsync = promisify(execFile);
 const router: IRouter = Router();
@@ -1025,6 +1025,13 @@ async function runBuild(
       .update(customerBuildsTable)
       .set(updateData)
       .where(eq(customerBuildsTable.id, session.jobId));
+
+    try {
+      await uploadBuildToStorage(session.jobId, session.outputPath);
+      logger.info({ jobId: session.jobId }, "Build APK persisted to object storage");
+    } catch (uploadErr) {
+      logger.error({ err: uploadErr, jobId: session.jobId }, "Failed to upload build to object storage (local file still available)");
+    }
   } catch (err: unknown) {
     session.status = "error";
     session.error = err instanceof Error ? err.message : "Build failed";
@@ -1214,20 +1221,38 @@ router.get("/customer/builds/:jobId/download", async (req: AuthRequest, res: Res
       return;
     }
 
+    let filePath = job.outputPath;
+    let fileAvailable = false;
+
     try {
-      await fs.access(job.outputPath);
+      await fs.access(filePath);
+      fileAvailable = true;
     } catch {
-      res.status(404).json({ error: "Output file no longer available" });
+      logger.info({ jobId }, "Local file missing, trying object storage");
+      const tempPath = path.join(os.tmpdir(), `build-download-${jobId}.apk`);
+      const downloaded = await downloadBuildFromStorage(jobId, tempPath);
+      if (downloaded) {
+        filePath = tempPath;
+        fileAvailable = true;
+      }
+    }
+
+    if (!fileAvailable) {
+      res.status(404).json({ error: "Output file no longer available. Please rebuild the app." });
       return;
     }
 
     const outputName = job.outputFileName || `${job.appName.replace(/[^a-zA-Z0-9._-]/g, "_")}.apk`;
-    const stat = await fs.stat(job.outputPath);
+    const stat = await fs.stat(filePath);
     res.setHeader("Content-Disposition", `attachment; filename="${outputName}"`);
     res.setHeader("Content-Type", "application/vnd.android.package-archive");
     res.setHeader("Content-Length", stat.size.toString());
-    const data = await fs.readFile(job.outputPath);
+    const data = await fs.readFile(filePath);
     res.send(data);
+
+    if (filePath !== job.outputPath) {
+      fs.unlink(filePath).catch(() => {});
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to download build";
     res.status(500).json({ error: message });
