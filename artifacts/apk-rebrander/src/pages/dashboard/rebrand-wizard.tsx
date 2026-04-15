@@ -375,6 +375,7 @@ export default function RebrandWizard({
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Enter your panel/portal URL. This will replace the default demo URL in the app.
+              Do not include <span className="font-medium">http://</span> or <span className="font-medium">https://</span> — just the domain and path.
             </p>
             <div className="space-y-2">
               <Label htmlFor="panelUrl">Your Panel URL</Label>
@@ -382,7 +383,7 @@ export default function RebrandWizard({
                 id="panelUrl"
                 placeholder="panel.yourdomain.com"
                 value={panelUrl}
-                onChange={(e) => { setPanelUrl(e.target.value); setPanelUrlSaved(false); }}
+                onChange={(e) => { setPanelUrl(e.target.value.replace(/^https?:\/\//i, "")); setPanelUrlSaved(false); }}
               />
             </div>
             {panelUrlError && (
