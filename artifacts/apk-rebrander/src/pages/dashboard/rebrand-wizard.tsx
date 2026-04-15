@@ -596,8 +596,25 @@ export default function RebrandWizard({
                     <p className="mt-1">{buildError}</p>
                   </div>
                 </div>
-                <Button onClick={startBuild} variant="outline" className="w-full">
-                  Retry Build
+                <p className="text-xs text-muted-foreground">
+                  Retrying will reset your session with fresh files. You'll need to re-apply your customizations (panel URL, app name, images).
+                </p>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setBuildError(null);
+                    setBuildStatus(null);
+                    setBuildProgress(null);
+                    setBuilding(false);
+                    setPanelUrlSaved(false);
+                    setAppNameSaved(false);
+                    setFileNameSaved(false);
+                    setImages((prev) => prev.map((img) => ({ ...img, replaced: false })));
+                    setStep("panel-url");
+                  }}
+                >
+                  Retry — Start Over
                 </Button>
               </div>
             )}

@@ -63,7 +63,7 @@ async function restoreSession(jobId: number, userId: number): Promise<RebrandSes
     .limit(1);
 
   if (!job) return null;
-  if (job.status !== "ready" && job.status !== "preparing") return null;
+  if (["done", "cancelled"].includes(job.status)) return null;
   if (!job.sessionId) return null;
 
   const sessionDir = path.join(WORK_DIR, "sessions", job.sessionId);
@@ -637,9 +637,34 @@ router.post("/customer/rebrand/:jobId/build", async (req: AuthRequest, res: Resp
       res.status(404).json({ error: "Session not found" });
       return;
     }
-    if (session.status !== "ready") {
+    if (session.status !== "ready" && session.status !== "error") {
       res.status(400).json({ error: "Session not ready for building" });
       return;
+    }
+
+    if (session.status === "error") {
+      logger.info({ jobId }, "Retry build: re-copying fresh decompiled files");
+      const [app] = await db
+        .select()
+        .from(appsTable)
+        .where(eq(appsTable.id, session.baseAppId))
+        .limit(1);
+      if (!app) {
+        res.status(404).json({ error: "Base app not found" });
+        return;
+      }
+      const baseDecompDir = path.join(BASE_APKS_DIR, String(app.id), "decompiled");
+      try {
+        await fs.rm(session.decompDir, { recursive: true, force: true });
+        await execFileAsync("cp", ["-a", baseDecompDir, session.decompDir], { timeout: 120000 });
+        session.status = "ready";
+        session.error = undefined;
+        session.progress = "Fresh files restored for retry";
+      } catch (copyErr) {
+        logger.error({ err: copyErr, jobId }, "Retry build: failed to re-copy files");
+        res.status(500).json({ error: "Failed to prepare fresh files for retry. Please start a new rebrand." });
+        return;
+      }
     }
 
     const [job] = await db
