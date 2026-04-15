@@ -319,7 +319,7 @@ async function findApktool(): Promise<string> {
 
 let cachedApktoolPath: string | null = null;
 
-async function getApktoolPath(): Promise<string> {
+export async function findApktoolPath(): Promise<string> {
   if (!cachedApktoolPath) {
     cachedApktoolPath = await findApktool();
   }
@@ -327,7 +327,7 @@ async function getApktoolPath(): Promise<string> {
 }
 
 export async function tryApktoolBuild(args: string[]): Promise<void> {
-  const apktoolCmd = await getApktoolPath();
+  const apktoolCmd = await findApktoolPath();
   await execFileAsync(apktoolCmd, args, {
     timeout: 300000,
     maxBuffer: 50 * 1024 * 1024,

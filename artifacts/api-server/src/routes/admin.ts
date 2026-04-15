@@ -19,6 +19,7 @@ import {
 import { eq, desc, sql, and } from "drizzle-orm";
 import { requireAuth, requireAdmin, type AuthRequest } from "../middlewares/auth";
 import { logger } from "../lib/logger";
+import { uploadApkToStorage } from "../lib/apkStorage";
 
 const execFileAsync = promisify(execFile);
 const router = Router();
@@ -152,6 +153,10 @@ router.post("/admin/apps/upload", upload.single("apk"), async (req: AuthRequest,
         .where(eq(appsTable.id, inserted.id));
 
       logger.info(`App ${inserted.id} decompiled successfully`);
+
+      uploadApkToStorage(inserted.id, apkPath).catch((storageErr) => {
+        logger.error({ err: storageErr, appId: inserted.id }, "Failed to upload APK to persistent storage (non-fatal)");
+      });
     } catch (err) {
       logger.error({ err }, `Failed to decompile app ${inserted.id}`);
       await db.delete(appsTable).where(eq(appsTable.id, inserted.id));
@@ -303,6 +308,10 @@ router.post("/admin/apps/upload/complete", async (req: AuthRequest, res: Respons
         .where(eq(appsTable.id, inserted.id));
 
       logger.info(`App ${inserted.id} decompiled successfully (chunked upload)`);
+
+      uploadApkToStorage(inserted.id, apkPath).catch((storageErr) => {
+        logger.error({ err: storageErr, appId: inserted.id }, "Failed to upload APK to persistent storage (non-fatal)");
+      });
     } catch (err) {
       logger.error({ err }, `Failed to decompile app ${inserted.id}`);
       await db.delete(appsTable).where(eq(appsTable.id, inserted.id));

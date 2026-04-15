@@ -18,6 +18,7 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { logger } from "../lib/logger";
+import { downloadApkFromStorage } from "../lib/apkStorage";
 
 const execFileAsync = promisify(execFile);
 const router: IRouter = Router();
@@ -124,12 +125,53 @@ router.post("/customer/rebrand/start", async (req: AuthRequest, res: Response) =
       return;
     }
 
-    const baseDecompDir = path.join(BASE_APKS_DIR, String(app.id), "decompiled");
+    const appDir = path.join(BASE_APKS_DIR, String(app.id));
+    const baseDecompDir = path.join(appDir, "decompiled");
+    let decompExists = false;
     try {
       await fs.access(baseDecompDir);
-    } catch {
-      res.status(400).json({ error: "Base app is not ready yet (still decompiling)" });
-      return;
+      decompExists = true;
+    } catch {}
+
+    if (!decompExists) {
+      logger.info({ appId: app.id }, "Decompiled directory missing, attempting to restore from storage");
+
+      const apkFileName = app.filePath ? path.basename(app.filePath) : null;
+      if (!apkFileName) {
+        res.status(400).json({ error: "Base app file information is missing. Please contact admin." });
+        return;
+      }
+
+      const localApkPath = path.join(appDir, apkFileName);
+      let apkFileExists = false;
+      try {
+        await fs.access(localApkPath);
+        apkFileExists = true;
+      } catch {}
+
+      if (!apkFileExists) {
+        const downloaded = await downloadApkFromStorage(app.id, apkFileName, localApkPath);
+        if (!downloaded) {
+          res.status(400).json({ error: "Base app files are unavailable. The admin needs to re-upload this app." });
+          return;
+        }
+        apkFileExists = true;
+      }
+
+      try {
+        const { findApktoolPath } = await import("./apk-helpers");
+        const apktoolCmd = await findApktoolPath();
+        logger.info({ appId: app.id, apkPath: localApkPath }, "Re-decompiling APK");
+        await execFileAsync(apktoolCmd, ["d", "-f", "-o", baseDecompDir, localApkPath], {
+          timeout: 300000,
+          maxBuffer: 50 * 1024 * 1024,
+        });
+        logger.info({ appId: app.id }, "APK re-decompiled successfully");
+      } catch (decompErr) {
+        logger.error({ err: decompErr, appId: app.id }, "Failed to re-decompile APK");
+        res.status(500).json({ error: "Failed to prepare base app. Please try again or contact admin." });
+        return;
+      }
     }
 
     const sessionId = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
