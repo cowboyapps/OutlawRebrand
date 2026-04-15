@@ -444,7 +444,7 @@ router.put("/customer/rebrand/:jobId/panel-url", async (req: AuthRequest, res: R
     const newUrl = panelUrl.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
 
     let replacements = 0;
-    const textExts = [".xml", ".json", ".properties", ".txt", ".yml", ".yaml"];
+    const textExts = [".xml", ".json", ".properties", ".txt", ".yml", ".yaml", ".smali"];
 
     async function replaceInDir(dir: string): Promise<void> {
       try {
@@ -473,6 +473,7 @@ router.put("/customer/rebrand/:jobId/panel-url", async (req: AuthRequest, res: R
     }
 
     await replaceInDir(session.decompDir);
+    await fs.writeFile(path.join(session.decompDir, ".panel_url"), newUrl, "utf-8");
     res.json({ success: true, replacements, message: `Replaced ${replacements} occurrence(s) of panel URL` });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to update panel URL";
@@ -712,6 +713,104 @@ router.post("/customer/rebrand/:jobId/build", async (req: AuthRequest, res: Resp
   }
 });
 
+async function patchDexStringsInApk(apkPath: string, decompDir: string): Promise<void> {
+  const oldUrl = "demo.cockpit.lol";
+  let newUrl: string | null = null;
+
+  const panelUrlFile = path.join(decompDir, ".panel_url");
+  try {
+    newUrl = (await fs.readFile(panelUrlFile, "utf-8")).trim();
+  } catch {}
+
+  if (!newUrl) {
+    logger.info("patchDexStringsInApk: no panel URL recorded, skipping dex patch");
+    return;
+  }
+
+  if (newUrl.length > oldUrl.length) {
+    logger.warn({ oldUrl, newUrl, oldLen: oldUrl.length, newLen: newUrl.length },
+      "patchDexStringsInApk: new URL longer than old, truncating to fit dex string slot");
+    newUrl = newUrl.substring(0, oldUrl.length);
+  }
+
+  logger.info({ oldUrl, newUrl }, "patchDexStringsInApk: patching dex files");
+
+  const AdmZip = (await import("adm-zip")).default;
+  const zip = new AdmZip(apkPath);
+  const zipEntries = zip.getEntries();
+
+  const oldBytes = Buffer.from(oldUrl, "utf-8");
+  const newBytes = Buffer.from(newUrl, "utf-8");
+  const oldCharLen = oldUrl.length;
+  const newCharLen = newUrl.length;
+
+  let totalPatches = 0;
+  for (const entry of zipEntries) {
+    if (!/^classes\d*\.dex$/.test(entry.entryName)) continue;
+    const dexBuf = entry.getData();
+    let entryPatches = 0;
+    let searchOffset = 0;
+
+    while (true) {
+      const idx = dexBuf.indexOf(oldBytes, searchOffset);
+      if (idx === -1) break;
+
+      const hasNullTerminator = (idx + oldBytes.length < dexBuf.length) && (dexBuf[idx + oldBytes.length] === 0x00);
+      const hasLenPrefix = (idx >= 1) && (dexBuf[idx - 1] === oldCharLen);
+
+      if (hasNullTerminator && hasLenPrefix) {
+        dexBuf[idx - 1] = newCharLen;
+        newBytes.copy(dexBuf, idx);
+        dexBuf[idx + newBytes.length] = 0x00;
+        for (let i = newBytes.length + 1; i <= oldBytes.length; i++) {
+          dexBuf[idx + i] = 0x00;
+        }
+        entryPatches++;
+      } else {
+        newBytes.copy(dexBuf, idx);
+        if (newBytes.length < oldBytes.length) {
+          for (let i = newBytes.length; i < oldBytes.length; i++) {
+            dexBuf[idx + i] = oldBytes[i];
+          }
+        }
+        entryPatches++;
+      }
+
+      searchOffset = idx + oldBytes.length;
+    }
+
+    if (entryPatches > 0) {
+      fixDexChecksums(dexBuf);
+      zip.updateFile(entry.entryName, dexBuf);
+      totalPatches += entryPatches;
+    }
+  }
+
+  if (totalPatches > 0) {
+    zip.writeZip(apkPath);
+    logger.info({ totalPatches, oldUrl, newUrl }, "patchDexStringsInApk: dex files patched");
+  } else {
+    logger.info({ oldUrl }, "patchDexStringsInApk: no occurrences found in dex files");
+  }
+}
+
+function fixDexChecksums(dexBuf: Buffer): void {
+  const nodeCrypto = require("crypto") as typeof import("crypto");
+  const sha1 = nodeCrypto.createHash("sha1").update(dexBuf.subarray(32)).digest();
+  sha1.copy(dexBuf, 12);
+
+  const adler32 = (buf: Buffer): number => {
+    let a = 1, b = 0;
+    for (let i = 0; i < buf.length; i++) {
+      a = (a + buf[i]) % 65521;
+      b = (b + a) % 65521;
+    }
+    return ((b << 16) | a) >>> 0;
+  };
+  const checksum = adler32(dexBuf.subarray(12));
+  dexBuf.writeUInt32LE(checksum, 8);
+}
+
 async function runBuild(
   session: RebrandSession,
   creditsCost: number,
@@ -734,9 +833,8 @@ async function runBuild(
     session.progress = "Recompiling APK...";
 
     const buildStrategies = [
-      { label: "aapt1", args: ["b", "-f", "-o", unsignedApk, session.decompDir] },
       { label: "aapt2", args: ["b", "-f", "--use-aapt2", "-o", unsignedApk, session.decompDir] },
-      { label: "aapt1-no-res", args: ["b", "-f", "--no-res", "-o", unsignedApk, session.decompDir] },
+      { label: "aapt1", args: ["b", "-f", "-o", unsignedApk, session.decompDir] },
     ];
 
     let built = false;
@@ -777,6 +875,38 @@ async function runBuild(
         buildErrors.push(`[${strategy.label}] ${fullError.slice(0, 500)}`);
       }
       if (built) break;
+    }
+
+    if (!built) {
+      logger.info({ jobId: session.jobId }, "Smali build failed, trying no-src fallback with dex patching");
+      session.progress = "Recompiling APK (no-src fallback)...";
+
+      const noSrcStrategies = [
+        { label: "no-src-aapt2", args: ["b", "-f", "--no-src", "--use-aapt2", "-o", unsignedApk, session.decompDir] },
+        { label: "no-src-aapt1", args: ["b", "-f", "--no-src", "-o", unsignedApk, session.decompDir] },
+      ];
+
+      for (const strategy of noSrcStrategies) {
+        try {
+          session.progress = `Recompiling APK (${strategy.label})...`;
+          await tryApktoolBuild(strategy.args);
+          built = true;
+          logger.info({ jobId: session.jobId, strategy: strategy.label }, "No-src build succeeded, will patch dex files");
+          break;
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          buildErrors.push(`[${strategy.label}] ${errMsg.slice(0, 500)}`);
+        }
+      }
+
+      if (built) {
+        session.progress = "Patching URL in compiled code...";
+        try {
+          await patchDexStringsInApk(unsignedApk, session.decompDir);
+        } catch (patchErr) {
+          logger.error({ err: patchErr, jobId: session.jobId }, "Dex patching failed (non-fatal)");
+        }
+      }
     }
 
     if (!built) {

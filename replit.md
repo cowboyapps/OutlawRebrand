@@ -78,7 +78,9 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 - ZIP alignment via custom `tools/ZipAlign.java` — aligns all uncompressed APK entries to 4-byte boundaries before signing
 - Keystore persisted at `tools/debug.keystore` (PKCS12, password: `rebrander123`, alias: `rebrander`)
 - Pre-build cleanup: removes APKTOOL_DUPLICATE files, smali_assets dirs, stray root dex files
-- Build flow: apktool build → remove stray DEX → ZipAlign → sign with apksig
+- Panel URL replacement: replaces `demo.cockpit.lol` in `.xml`, `.json`, `.properties`, `.txt`, `.yml`, `.yaml`, and `.smali` files
+- Build flow: apktool build (aapt2 → aapt1, with `--no-src` dex-patching fallback) → remove stray DEX → ZipAlign → sign with apksig
+- Hybrid build fallback: if full smali rebuild fails, builds with `--no-src` (keeps original dex) + binary-patches panel URL directly in dex files via adm-zip
 - `multer` handles file uploads: 500MB limit for APKs, 10MB for images
 
 ## Key Commands
