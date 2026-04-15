@@ -39,19 +39,42 @@ export default function CustomerDashboard() {
   const params = new URLSearchParams(searchStr);
   const paymentParam = params.get("payment");
 
+  const sessionIdParam = params.get("session_id");
   const [view, setView] = useState<DashboardView>(paymentParam ? "buy-credits" : "browse");
   const [selectedApp, setSelectedApp] = useState<AvailableApp | null>(null);
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<string | null>(paymentParam);
 
   useEffect(() => {
-    if (paymentParam) {
-      setPaymentStatus(paymentParam);
+    if (paymentParam === "success" && sessionIdParam) {
       setView("buy-credits");
-      refetchUser();
+      setPaymentStatus("verifying");
+      apiFetch("/stripe/verify-and-fulfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sessionIdParam }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.status === "paid") {
+            setPaymentStatus("success");
+          } else {
+            setPaymentStatus("failed");
+          }
+          refetchUser();
+        })
+        .catch(() => {
+          setPaymentStatus("failed");
+        })
+        .finally(() => {
+          setLocation("/dashboard", { replace: true });
+        });
+    } else if (paymentParam === "cancelled") {
+      setPaymentStatus("cancelled");
+      setView("buy-credits");
       setLocation("/dashboard", { replace: true });
     }
-  }, [paymentParam]);
+  }, [paymentParam, sessionIdParam]);
 
   const { data: apps = [], isLoading: appsLoading } = useQuery<AvailableApp[]>({
     queryKey: ["customer", "apps"],

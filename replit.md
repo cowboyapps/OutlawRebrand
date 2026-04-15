@@ -13,7 +13,7 @@ pnpm workspace monorepo using TypeScript. APK Rebranding Tool — a multi-user S
 - **API framework**: Express 5
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui
 - **Auth**: Clerk (with proxy middleware for production)
-- **Payments**: Stripe (checkout sessions + webhooks)
+- **Payments**: Stripe (checkout sessions + verify-and-fulfill + webhooks)
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)

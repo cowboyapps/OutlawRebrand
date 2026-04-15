@@ -267,31 +267,14 @@ export const requireAuth = async (
     let jwtEmail = "";
     let jwtName = "";
 
-    const authHeader = req.headers.authorization;
-    const sessionCookie = req.cookies?.["__session"];
-    const allCookieKeys = req.cookies ? Object.keys(req.cookies) : [];
-    logger.info({
-      hasAuthHeader: !!authHeader,
-      authHeaderPrefix: authHeader ? authHeader.substring(0, 20) : null,
-      hasSessionCookie: !!sessionCookie,
-      cookieKeys: allCookieKeys,
-      url: req.url,
-    }, "Auth debug: incoming request");
-
     const token = extractSessionToken(req);
     if (token) {
-      logger.info({ tokenLength: token.length, tokenPrefix: token.substring(0, 30) }, "Auth debug: found token");
       const payload = await verifyClerkJwt(token);
       if (payload?.sub) {
         clerkId = payload.sub;
         jwtEmail = (payload.email as string) || "";
         jwtName = [payload.first_name, payload.last_name].filter(Boolean).join(" ");
-        logger.info({ clerkId, jwtEmail }, "Auth debug: JWT verified successfully");
-      } else {
-        logger.warn("Auth debug: JWT verification returned null payload");
       }
-    } else {
-      logger.warn("Auth debug: No token found in request");
     }
 
     if (!clerkId) {

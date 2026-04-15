@@ -92,11 +92,11 @@ router.post("/stripe/create-checkout-session", requireAuth, async (req: AuthRequ
   }
 });
 
-router.get("/stripe/checkout-success", requireAuth, async (req: AuthRequest, res: Response) => {
+router.post("/stripe/verify-and-fulfill", requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const sessionId = req.query.session_id as string;
+    const sessionId = req.body.sessionId as string;
     if (!sessionId) {
-      res.status(400).json({ error: "session_id is required" });
+      res.status(400).json({ error: "sessionId is required" });
       return;
     }
 
@@ -104,17 +104,75 @@ router.get("/stripe/checkout-success", requireAuth, async (req: AuthRequest, res
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
     if (session.metadata?.userId !== String(req.userId)) {
-      res.status(403).json({ error: "Not authorized to view this session" });
+      res.status(403).json({ error: "Not authorized" });
       return;
     }
 
-    if (session.payment_status === "paid") {
-      res.json({ success: true, status: "paid" });
-    } else {
+    if (session.payment_status !== "paid") {
       res.json({ success: false, status: session.payment_status });
+      return;
+    }
+
+    const userId = Number(session.metadata.userId);
+    const credits = Number(session.metadata.credits);
+    const creditPackId = Number(session.metadata.creditPackId);
+    const amountPaidCents = session.amount_total;
+
+    if (!userId || !credits || !creditPackId) {
+      logger.warn({ metadata: session.metadata }, "Verify: missing required metadata");
+      res.status(400).json({ error: "Invalid session metadata" });
+      return;
+    }
+
+    const [pack] = await db
+      .select()
+      .from(creditPacksTable)
+      .where(eq(creditPacksTable.id, creditPackId));
+
+    if (!pack || pack.credits !== credits) {
+      logger.error({ creditPackId, expectedCredits: pack?.credits, metadataCredits: credits }, "Verify: credit count mismatch");
+      res.status(400).json({ error: "Credit pack mismatch" });
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const insertResult = await client.query(
+        `INSERT INTO credit_transactions (user_id, amount, type, description, stripe_session_id, credit_pack_id, amount_paid_cents, created_at)
+         VALUES ($1, $2, 'purchase', $3, $4, $5, $6, now())
+         ON CONFLICT (stripe_session_id) DO NOTHING
+         RETURNING id`,
+        [userId, credits, `Purchased ${credits} credits`, sessionId, creditPackId, amountPaidCents]
+      );
+
+      if (insertResult.rows.length > 0) {
+        await client.query(
+          "UPDATE users SET credits = credits + $1 WHERE id = $2",
+          [credits, userId]
+        );
+        await client.query("COMMIT");
+        logger.info({ userId, credits, sessionId }, "Credits added via checkout verification");
+      } else {
+        await client.query("ROLLBACK");
+        logger.info({ sessionId }, "Credits already fulfilled for this session");
+      }
+
+      const userResult = await pool.query("SELECT credits FROM users WHERE id = $1", [userId]);
+      const currentCredits = userResult.rows[0]?.credits ?? 0;
+
+      res.json({ success: true, status: "paid", credits: currentCredits });
+    } catch (txErr) {
+      await client.query("ROLLBACK").catch(() => {});
+      logger.error({ err: txErr }, "Failed to fulfill credits during verify");
+      throw txErr;
+    } finally {
+      client.release();
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to verify payment";
+    logger.error({ err }, "Stripe verify error");
     res.status(500).json({ error: message });
   }
 });

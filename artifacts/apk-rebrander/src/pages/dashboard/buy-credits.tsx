@@ -83,10 +83,22 @@ export default function BuyCredits({ userCredits, paymentStatus }: BuyCreditsPro
 
   return (
     <div className="space-y-8">
+      {paymentStatus === "verifying" && (
+        <div className="flex items-center gap-2 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-400">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Verifying payment...</span>
+        </div>
+      )}
       {paymentStatus === "success" && (
         <div className="flex items-center gap-2 p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400">
           <CheckCircle2 className="h-5 w-5" />
           <span>Payment successful! Credits have been added to your account.</span>
+        </div>
+      )}
+      {paymentStatus === "failed" && (
+        <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400">
+          <XCircle className="h-5 w-5" />
+          <span>Payment verification failed. If you were charged, please contact support.</span>
         </div>
       )}
       {paymentStatus === "cancelled" && (
