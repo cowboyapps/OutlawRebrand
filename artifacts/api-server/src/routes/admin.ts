@@ -80,8 +80,8 @@ async function getApktoolPath(): Promise<string> {
   return cachedApktoolPath;
 }
 
-router.use(requireAuth);
-router.use(requireAdmin);
+router.use("/admin", requireAuth);
+router.use("/admin", requireAdmin);
 
 router.post("/admin/apps/upload", upload.single("apk"), async (req: AuthRequest, res: Response) => {
   try {
