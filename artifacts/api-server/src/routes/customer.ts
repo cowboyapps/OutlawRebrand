@@ -116,7 +116,8 @@ async function restoreSession(jobId: number, userId: number): Promise<RebrandSes
 
     await fs.mkdir(sessionDir, { recursive: true });
     try {
-      await execFileAsync("cp", ["-a", baseDecompDir, decompDir], { timeout: 120000 });
+      await execFileAsync("cp", ["-rl", baseDecompDir, decompDir], { timeout: 300000 });
+      await execFileAsync("chmod", ["-R", "u+w", decompDir], { timeout: 60000 });
     } catch (err) {
       logger.error({ err, jobId }, "restoreSession: failed to copy decompiled dir");
       return null;
@@ -302,7 +303,8 @@ router.post("/customer/rebrand/start", async (req: AuthRequest, res: Response) =
 
     (async () => {
       try {
-        await execFileAsync("cp", ["-a", baseDecompDir, decompDir], { timeout: 120000 });
+        await execFileAsync("cp", ["-rl", baseDecompDir, decompDir], { timeout: 300000 });
+        await execFileAsync("chmod", ["-R", "u+w", decompDir], { timeout: 60000 });
 
         const session: RebrandSession = {
           jobId: job.id,
@@ -657,7 +659,8 @@ router.post("/customer/rebrand/:jobId/build", async (req: AuthRequest, res: Resp
       const baseDecompDir = path.join(BASE_APKS_DIR, String(app.id), "decompiled");
       try {
         await fs.rm(session.decompDir, { recursive: true, force: true });
-        await execFileAsync("cp", ["-a", baseDecompDir, session.decompDir], { timeout: 120000 });
+        await execFileAsync("cp", ["-rl", baseDecompDir, session.decompDir], { timeout: 300000 });
+        await execFileAsync("chmod", ["-R", "u+w", session.decompDir], { timeout: 60000 });
         session.status = "ready";
         session.error = undefined;
         session.progress = "Fresh files restored for retry";
