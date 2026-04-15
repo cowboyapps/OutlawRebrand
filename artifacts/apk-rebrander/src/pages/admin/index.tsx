@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useAuth } from "@clerk/react";
-import { useCurrentUser } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCurrentUser, useAdminLogin } from "@/hooks/use-auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { LogOut, Package, Users, CreditCard, Receipt } from "lucide-react";
@@ -11,7 +13,19 @@ import PurchasesTab from "./purchases-tab";
 
 export default function AdminDashboard() {
   const { data: user } = useCurrentUser();
-  const { signOut } = useAuth();
+  const { signOut, isSignedIn } = useAuth();
+  const { logout: adminLogout } = useAdminLogin();
+  const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+
+  const handleSignOut = useCallback(async () => {
+    await adminLogout();
+    queryClient.clear();
+    if (isSignedIn) {
+      await signOut();
+    }
+    setLocation("/");
+  }, [adminLogout, queryClient, isSignedIn, signOut, setLocation]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -20,7 +34,7 @@ export default function AdminDashboard() {
           <h1 className="text-xl font-bold">Admin Dashboard</h1>
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">{user?.email}</span>
-            <Button variant="ghost" size="sm" onClick={() => signOut()}>
+            <Button variant="ghost" size="sm" onClick={handleSignOut}>
               <LogOut className="h-4 w-4 mr-1" />
               Sign Out
             </Button>
