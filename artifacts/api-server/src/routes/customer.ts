@@ -49,6 +49,103 @@ interface RebrandSession {
 
 const rebrandSessions = new Map<number, RebrandSession>();
 
+async function restoreSession(jobId: number, userId: number): Promise<RebrandSession | null> {
+  const cached = rebrandSessions.get(jobId);
+  if (cached) {
+    if (cached.userId !== userId) return null;
+    return cached;
+  }
+
+  const [job] = await db
+    .select()
+    .from(customerBuildsTable)
+    .where(and(eq(customerBuildsTable.id, jobId), eq(customerBuildsTable.userId, userId)))
+    .limit(1);
+
+  if (!job) return null;
+  if (job.status !== "ready" && job.status !== "preparing") return null;
+  if (!job.sessionId) return null;
+
+  const sessionDir = path.join(WORK_DIR, "sessions", job.sessionId);
+  const decompDir = path.join(sessionDir, "decompiled");
+  const outputPath = path.join(sessionDir, "output.apk");
+
+  let decompExists = false;
+  try {
+    await fs.access(decompDir);
+    decompExists = true;
+  } catch {}
+
+  if (!decompExists) {
+    const [app] = await db
+      .select()
+      .from(appsTable)
+      .where(eq(appsTable.id, job.baseApkId))
+      .limit(1);
+
+    if (!app) return null;
+
+    const baseDecompDir = path.join(BASE_APKS_DIR, String(app.id), "decompiled");
+    let baseExists = false;
+    try {
+      await fs.access(baseDecompDir);
+      baseExists = true;
+    } catch {}
+
+    if (!baseExists) {
+      const apkFileName = app.filePath ? path.basename(app.filePath) : null;
+      if (!apkFileName) return null;
+      const localApkPath = path.join(BASE_APKS_DIR, String(app.id), apkFileName);
+      let apkExists = false;
+      try { await fs.access(localApkPath); apkExists = true; } catch {}
+      if (!apkExists) {
+        const downloaded = await downloadApkFromStorage(app.id, apkFileName, localApkPath);
+        if (!downloaded) return null;
+      }
+      try {
+        const { findApktoolPath } = await import("./apk-helpers");
+        const apktoolCmd = await findApktoolPath();
+        await execFileAsync(apktoolCmd, ["d", "-f", "-o", baseDecompDir, localApkPath], {
+          timeout: 300000, maxBuffer: 50 * 1024 * 1024,
+        });
+      } catch (err) {
+        logger.error({ err, jobId }, "restoreSession: failed to re-decompile base APK");
+        return null;
+      }
+    }
+
+    await fs.mkdir(sessionDir, { recursive: true });
+    try {
+      await execFileAsync("cp", ["-a", baseDecompDir, decompDir], { timeout: 120000 });
+    } catch (err) {
+      logger.error({ err, jobId }, "restoreSession: failed to copy decompiled dir");
+      return null;
+    }
+  }
+
+  const session: RebrandSession = {
+    jobId: job.id,
+    userId: job.userId,
+    baseAppId: job.baseApkId,
+    sessionDir,
+    decompDir,
+    outputPath,
+    status: "ready",
+    progress: "Session restored",
+  };
+  rebrandSessions.set(job.id, session);
+
+  if (job.status === "preparing") {
+    await db
+      .update(customerBuildsTable)
+      .set({ status: "ready" })
+      .where(eq(customerBuildsTable.id, job.id));
+  }
+
+  logger.info({ jobId, userId }, "Rebrand session restored from DB");
+  return session;
+}
+
 router.get("/customer/apps", async (req: AuthRequest, res: Response) => {
   try {
     const apps = await db
@@ -243,13 +340,9 @@ router.post("/customer/rebrand/start", async (req: AuthRequest, res: Response) =
 router.get("/customer/rebrand/:jobId/status", async (req: AuthRequest, res: Response) => {
   try {
     const jobId = Number(req.params.jobId);
-    const session = rebrandSessions.get(jobId);
+    const session = await restoreSession(jobId, req.userId!);
 
     if (session) {
-      if (session.userId !== req.userId) {
-        res.status(403).json({ error: "Access denied" });
-        return;
-      }
       res.json({
         jobId,
         status: session.status,
@@ -287,8 +380,8 @@ router.get("/customer/rebrand/:jobId/status", async (req: AuthRequest, res: Resp
 router.get("/customer/rebrand/:jobId/images", async (req: AuthRequest, res: Response) => {
   try {
     const jobId = Number(req.params.jobId);
-    const session = rebrandSessions.get(jobId);
-    if (!session || session.userId !== req.userId) {
+    const session = await restoreSession(jobId, req.userId!);
+    if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
     }
@@ -331,8 +424,8 @@ router.get("/customer/rebrand/:jobId/images", async (req: AuthRequest, res: Resp
 router.put("/customer/rebrand/:jobId/panel-url", async (req: AuthRequest, res: Response) => {
   try {
     const jobId = Number(req.params.jobId);
-    const session = rebrandSessions.get(jobId);
-    if (!session || session.userId !== req.userId) {
+    const session = await restoreSession(jobId, req.userId!);
+    if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
     }
@@ -390,8 +483,8 @@ router.put("/customer/rebrand/:jobId/panel-url", async (req: AuthRequest, res: R
 router.put("/customer/rebrand/:jobId/app-name", async (req: AuthRequest, res: Response) => {
   try {
     const jobId = Number(req.params.jobId);
-    const session = rebrandSessions.get(jobId);
-    if (!session || session.userId !== req.userId) {
+    const session = await restoreSession(jobId, req.userId!);
+    if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
     }
@@ -452,8 +545,8 @@ router.post(
   async (req: AuthRequest, res: Response) => {
     try {
       const jobId = Number(req.params.jobId);
-      const session = rebrandSessions.get(jobId);
-      if (!session || session.userId !== req.userId) {
+      const session = await restoreSession(jobId, req.userId!);
+      if (!session) {
         res.status(404).json({ error: "Session not found" });
         return;
       }
@@ -539,8 +632,8 @@ router.post(
 router.post("/customer/rebrand/:jobId/build", async (req: AuthRequest, res: Response) => {
   try {
     const jobId = Number(req.params.jobId);
-    const session = rebrandSessions.get(jobId);
-    if (!session || session.userId !== req.userId) {
+    const session = await restoreSession(jobId, req.userId!);
+    if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
     }
@@ -774,8 +867,8 @@ async function runBuild(
 router.put("/customer/rebrand/:jobId/output-filename", async (req: AuthRequest, res: Response) => {
   try {
     const jobId = Number(req.params.jobId);
-    const session = rebrandSessions.get(jobId);
-    if (!session || session.userId !== req.userId) {
+    const session = await restoreSession(jobId, req.userId!);
+    if (!session) {
       res.status(404).json({ error: "Session not found" });
       return;
     }
